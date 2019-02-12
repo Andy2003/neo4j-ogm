@@ -1,19 +1,24 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.cypher.compiler.builders.node;
 
-import java.util.Map;
+import java.util.Optional;
 
 import org.neo4j.ogm.cypher.compiler.RelationshipBuilder;
 import org.neo4j.ogm.model.Edge;
@@ -23,62 +28,52 @@ import org.neo4j.ogm.utils.EntityUtils;
 
 /**
  * @author Luanne Misquitta
+ * @author Michael J. Simons
  */
-public class DefaultRelationshipBuilder implements RelationshipBuilder {
+public class DefaultRelationshipBuilder extends AbstractPropertyContainerBuilder<RelationshipBuilder, RelationshipModel>
+    implements RelationshipBuilder {
 
-    RelationshipModel relationship = new RelationshipModel();
     private String direction;
     private boolean singleton = true; // will be false if the relationship can be mapped multiple times between two instances
     private boolean bidirectional = false;
     private boolean relationshipEntity = false;
 
     public DefaultRelationshipBuilder(String type, boolean bidirectional) {
-        relationship.setType(type);
-        relationship.setId(EntityUtils.nextRef());
+        this(type, null);
         this.bidirectional = bidirectional;
     }
 
     public DefaultRelationshipBuilder(String type, Long relationshipId) {
-        if (relationshipId == null) {
-            relationshipId = EntityUtils.nextRef();
-        }
-        relationship.setId(relationshipId);
-        relationship.setType(type);
+        super(new RelationshipModel());
+        super.targetContainer.setId(Optional.ofNullable(relationshipId).orElseGet(EntityUtils::nextRef));
+        super.targetContainer.setType(type);
     }
 
     @Override
     public Long reference() {
-        return relationship.getId();
+        return super.targetContainer.getId();
     }
 
     @Override
     public void setType(String type) {
-        relationship.setType(type);
+        super.targetContainer.setType(type);
     }
 
     @Override
     public RelationshipBuilder addProperty(String key, Object value) {
-        relationship.getPropertyList().add(new PropertyModel<>(key, value));
-        return this;
-    }
-
-    @Override
-    public RelationshipBuilder addProperties(Map<String, ?> properties) {
-        for (String key : properties.keySet()) {
-            addProperty(key, properties.get(key));
-        }
+        super.targetContainer.getPropertyList().add(new PropertyModel<>(key, value));
         return this;
     }
 
     @Override
     public void relate(Long startNodeId, Long endNodeId) {
-        relationship.setStartNode(startNodeId);
-        relationship.setEndNode(endNodeId);
+        super.targetContainer.setStartNode(startNodeId);
+        super.targetContainer.setEndNode(endNodeId);
     }
 
     @Override
     public String type() {
-        return relationship.getType();
+        return super.targetContainer.getType();
     }
 
     @Override
@@ -124,22 +119,22 @@ public class DefaultRelationshipBuilder implements RelationshipBuilder {
 
     @Override
     public Edge edge() {
-        return relationship;
+        return super.targetContainer;
     }
 
     @Override
     public void setReference(Long reference) {
-        relationship.setId(reference);
+        super.targetContainer.setId(reference);
     }
 
     @Override
     public void setPrimaryIdName(String primaryIdName) {
-        relationship.setPrimaryIdName(primaryIdName);
+        super.targetContainer.setPrimaryIdName(primaryIdName);
     }
 
     @Override
     public RelationshipBuilder setVersionProperty(String name, Long version) {
-        relationship.setVersion(new PropertyModel<>(name, version));
+        super.targetContainer.setVersion(new PropertyModel<>(name, version));
         return this;
     }
 }

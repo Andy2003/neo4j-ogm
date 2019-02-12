@@ -1,16 +1,21 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.context;
 
 import java.util.Collection;
@@ -323,23 +328,18 @@ public class EntityGraphMapper implements EntityMapper {
         } else {
             nodeBuilder = compiler.existingNode(Long.valueOf(id.toString()));
             nodeBuilder.addLabels(labels).setPrimaryIndex(primaryIndex);
-            removePreviousLabelsIfRequired(entity, classInfo, nodeBuilder);
+
+            this.mappingContext.getSnapshotOf(entity).ifPresent(snapshot ->
+                nodeBuilder
+                    .setPreviousDynamicLabels(snapshot.getDynamicLabels())
+                    .setPreviousCompositeProperties(snapshot.getDynamicCompositeProperties())
+            );
         }
 
         LOGGER.debug("visiting: {}", entity);
         context.visit(entity, nodeBuilder, horizon);
 
         return nodeBuilder;
-    }
-
-    private void removePreviousLabelsIfRequired(Object entity, ClassInfo classInfo, NodeBuilder nodeBuilder) {
-        FieldInfo labelFieldInfo = classInfo.labelFieldOrNull();
-        if (labelFieldInfo != null) {
-            Collection<String> labelDeltas = mappingContext.labelHistory(entity).getPreviousValues();
-            if (labelDeltas != null && labelDeltas.size() > 0) {
-                nodeBuilder.removeLabels(labelDeltas);
-            }
-        }
     }
 
     /**
@@ -526,16 +526,21 @@ public class EntityGraphMapper implements EntityMapper {
         if (isRelationshipEntity(entity)) {
             Long relId = mappingContext.nativeId(entity);
 
+            boolean relationshipIsNew = relId < 0;
             boolean relationshipEndsChanged = haveRelationEndsChanged(entity, relId);
 
-            if (relId < 0
-                || relationshipEndsChanged) { //if the RE itself is new, or it exists but has one of it's end nodes changed
+            if (relationshipIsNew || relationshipEndsChanged) {
                 relationshipBuilder = cypherBuilder.newRelationship(directedRelationship.type());
                 if (relationshipEndsChanged) {
                     EntityUtils.setIdentity(entity, null, metaData);
                 }
             } else {
                 relationshipBuilder = cypherBuilder.existingRelationship(relId, directedRelationship.type());
+
+                this.mappingContext.getSnapshotOf(entity).ifPresent(snapshot ->
+                    relationshipBuilder
+                        .setPreviousCompositeProperties(snapshot.getDynamicCompositeProperties())
+                );
             }
         } else {
             relationshipBuilder = cypherBuilder.newRelationship(directedRelationship.type(), mapBothDirections);
@@ -543,8 +548,8 @@ public class EntityGraphMapper implements EntityMapper {
 
         relationshipBuilder.direction(directedRelationship.direction());
         if (isRelationshipEntity(entity)) {
-            relationshipBuilder.setSingleton(
-                false);  // indicates that this relationship type can be mapped multiple times between 2 nodes
+            // indicates that this relationship type can be mapped multiple times between 2 nodes
+            relationshipBuilder.setSingleton(false);
             relationshipBuilder.setReference(mappingContext.nativeId(entity));
             relationshipBuilder.setRelationshipEntity(true);
 
@@ -691,7 +696,7 @@ public class EntityGraphMapper implements EntityMapper {
         for (FieldInfo fieldInfo : classInfo.propertyFields()) {
             if (fieldInfo.isComposite()) {
                 Map<String, ?> properties = fieldInfo.readComposite(entity);
-                builder.addProperties(properties);
+                builder.addCompositeProperties(properties);
             } else if (fieldInfo.isVersionField()) {
                 updateVersionField(entity, builder, fieldInfo);
             } else {
@@ -1002,7 +1007,7 @@ public class EntityGraphMapper implements EntityMapper {
         return mapBothWays;
     }
 
-    class RelationshipNodes {
+    static class RelationshipNodes {
 
         Long sourceId;
         Long targetId;
@@ -1011,14 +1016,14 @@ public class EntityGraphMapper implements EntityMapper {
         Object source;
         Object target;
 
-        public RelationshipNodes(Long sourceId, Long targetId, Class sourceType, Class targetType) {
+        RelationshipNodes(Long sourceId, Long targetId, Class sourceType, Class targetType) {
             this.sourceId = sourceId;
             this.targetId = targetId;
             this.sourceType = sourceType;
             this.targetType = targetType;
         }
 
-        public RelationshipNodes(Object source, Object target, Class sourceType, Class targetType) {
+        RelationshipNodes(Object source, Object target, Class sourceType, Class targetType) {
             this.sourceType = sourceType;
             this.targetType = targetType;
             this.source = source;

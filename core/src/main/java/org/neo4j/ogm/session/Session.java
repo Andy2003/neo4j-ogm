@@ -1,23 +1,27 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.session;
 
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.Map;
 
-import org.neo4j.ogm.annotation.GraphId;
 import org.neo4j.ogm.cypher.Filter;
 import org.neo4j.ogm.cypher.Filters;
 import org.neo4j.ogm.cypher.query.Pagination;
@@ -498,8 +502,9 @@ public interface Session {
 
     /**
      * Save entity(or entities) into the database, up to specified depth
-     * The entities are either created or updated. See {@link GraphId} and {@link org.neo4j.ogm.annotation.Id}
-     * When new objects are saved the instances are modified - the graph id is set to respective field.
+     * The entities are either created or updated.
+     * When new objects are saved and the objects have a field that is mapped with {@link org.neo4j.ogm.annotation.Id}
+     * using the internal Id-generation-strategy, those fields are modified and set to the internal graph-id.
      *
      * @param object object to save, may be single entity, array of entities or {@link Iterable}
      */
@@ -507,8 +512,9 @@ public interface Session {
 
     /**
      * Save entity(or entities) into the database, up to specified depth
-     * The objects are either created or updated. See {@link GraphId} and {@link org.neo4j.ogm.annotation.Id}.
-     * When new objects are saved the instances are modified - the graph id is set to respective field.
+     * The objects are either created or updated.
+     * When new objects are saved and the objects have a field that is mapped with {@link org.neo4j.ogm.annotation.Id}
+     * using the internal Id-generation-strategy, those fields are modified and set to the internal graph-id.
      *
      * @param object object to save, may be single entity, array of entities or {@link Iterable}
      */
@@ -675,7 +681,8 @@ public interface Session {
      * Resolve the graph id for a possible entity.
      *
      * @param possibleEntity the possible entity
-     * @return the value of the {@link GraphId} or null if either the object is not an entity or the id is null.
+     * @return the value of the internal graph id for the possible entity. Returns null if either the
+     * object is not an entity or the id is null.
      */
     Long resolveGraphIdFor(Object possibleEntity);
 

@@ -1,19 +1,27 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.metadata;
 
 import static org.assertj.core.api.Assertions.*;
+
+import java.util.HashMap;
+import java.util.Map;
 
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -105,6 +113,64 @@ public class IdGenerationTest extends MultiDriverTestClass {
             .load(ValidAnnotations.UuidIdAndGenerationType.class, entity.identifier);
         assertThat(retrievedEntity).isNotNull();
         assertThat(retrievedEntity.identifier).isNotNull().isEqualTo(entity.identifier);
+    }
+
+    // Deletion of entities with user type ids should be work if the are reloaded in another session.
+    @Test // DATAGRAPH-1144
+    public void deleteByEntityShouldWorkWithUserTypedIdsInNewSession() {
+
+        // Arrange entity to be deleted
+        ValidAnnotations.UuidIdAndGenerationTypeWithoutIdAttribute entity = new ValidAnnotations.UuidIdAndGenerationTypeWithoutIdAttribute();
+        session.save(entity);
+
+        // Open another session not having the id to native and vice versa cache.
+        Session session2 = sessionFactory.openSession();
+        // Loading the entity here populates the id cache and it must populate it in a way
+        // that uses the same keys, here the UUID itself, not the converted value
+        entity = session2.load(ValidAnnotations.UuidIdAndGenerationTypeWithoutIdAttribute.class, entity.identifier);
+
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("identifier", entity.identifier.toString());
+
+        deleteAndAssertDeletion(entity, session2, parameters);
+    }
+
+    // Deletion of objects should also work in cleared session, i.e. after the end of a Spring transaction
+    @Test // DATAGRAPH-1144
+    public void deleteByEntityShouldWorkWithUserTypedIdsInClearedSession() {
+
+        // Arrange entity to be deleted
+        ValidAnnotations.UuidIdAndGenerationTypeWithoutIdAttribute entity = new ValidAnnotations.UuidIdAndGenerationTypeWithoutIdAttribute();
+        session.save(entity);
+
+        // The session.clear(); method is broken as well, it doesn't clear the id/native cache
+        // so we have to use a new session but in contrast to #deleteByEntityShouldWorkWithUserTypedIdsInNewSession();
+        // we don't load the object into the session
+
+        Session session2 = sessionFactory.openSession();
+
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("identifier", entity.identifier.toString());
+
+        deleteAndAssertDeletion(entity, session2, parameters);
+    }
+
+    private static void deleteAndAssertDeletion(
+        ValidAnnotations.UuidIdAndGenerationTypeWithoutIdAttribute entity,
+        Session session2, Map<String, Object> parameters
+    ) {
+
+        String cypher = "MATCH (e:`ValidAnnotations$UuidIdAndGenerationTypeWithoutIdAttribute` {identifier: $identifier}) RETURN count(e)";
+        // Assert it's there.
+        assertThat(session2.queryForObject(Long.class, cypher, parameters))
+            .isEqualTo(1L);
+
+        // Delete it. The entity doesn't have a field where the native id is mapped.
+        session2.delete(entity);
+
+        // Assert it's gone.
+        assertThat(session2.queryForObject(ValidAnnotations.UuidIdAndGenerationType.class, cypher, parameters))
+            .isEqualTo(0l);
     }
 
     @Test

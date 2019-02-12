@@ -1,14 +1,20 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.neo4j.ogm.exception;
 
@@ -16,20 +22,59 @@ package org.neo4j.ogm.exception;
  * An exception raised when executing a Cypher query
  *
  * @author Luanne Misquitta
+ * @author Michael J. Simons
  */
 public class CypherException extends RuntimeException {
 
     private final String code;
     private final String description;
 
+    /**
+     * @param message
+     * @param cause
+     * @param code
+     * @param description
+     * @deprecated Since 3.1.6. Not meant to be used outside of OGM. Will be removed in 3.2.
+     */
+    @Deprecated
     public CypherException(String message, Throwable cause, String code, String description) {
         super(message + "; Code: " + code + "; Description: " + description, cause);
         this.code = code;
         this.description = description;
     }
 
+    /**
+     * @param message
+     * @param code
+     * @param description
+     * @deprecated Since 3.1.6. Not meant to be used outside of OGM. Will be removed in 3.2.
+     */
+    @Deprecated
     public CypherException(String message, String code, String description) {
         super(message + "; Code: " + code + "; Description: " + description);
+        this.code = code;
+        this.description = description;
+    }
+
+    /**
+     * @param code
+     * @param description
+     *
+     * @since 3.1.6
+     */
+    public CypherException(String code, String description) {
+        this(code, description, (Throwable)null);
+    }
+
+    /**
+     * @param code Error code / text as returned by the database.
+     * @param description Description as returned by the database.
+     * @param cause The root cause.
+     *
+     * @since 3.1.6
+     */
+    public CypherException(String code, String description, Throwable cause) {
+        super(String.format("Cypher execution failed with code '%s': %s.", code, description), cause);
         this.code = code;
         this.description = description;
     }

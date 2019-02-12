@@ -1,21 +1,29 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.persistence.types.properties;
 
 import static org.assertj.core.api.Assertions.*;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -64,5 +72,41 @@ public class RelationshipEntityPropertiesTest extends MultiDriverTestClass {
 
         Visit loaded = session.load(Visit.class, visit.getId());
         assertThat(loaded.getProperties()).containsEntry("note", "some random note about a visit to a place");
+    }
+
+    @Test // GH-518
+    public void shouldBeAbleToDeletePropertiesOnRelationshipsAgain() {
+        User user = new User();
+        user.setName("James Bond");
+
+        Visit visit = new Visit();
+
+        Map<String, String> initialProperties = new HashMap<>();
+        initialProperties.put("a", "007");
+        initialProperties.put("b", "4711");
+
+        visit.setUser(user);
+        visit.setProperties(initialProperties);
+        visit.setPlace(new Place());
+
+        user.setVisits(Collections.singleton(visit));
+
+        session.save(user);
+        session.clear();
+
+        User loadedUser = session.load(User.class, user.getId());
+        assertThat(loadedUser.getVisits()).hasSize(1);
+
+        Visit loadedVisit = loadedUser.getVisits().stream().findFirst().get();
+        assertThat(loadedVisit.getProperties()).containsOnly(entry("a", "007"), entry("b", "4711"));
+
+        loadedVisit.getProperties().remove("b");
+
+        session.save(loadedUser);
+        session.clear();
+
+        loadedUser = session.load(User.class, user.getId());
+        loadedVisit = loadedUser.getVisits().stream().findFirst().get();
+        assertThat(loadedVisit.getProperties()).containsExactly(entry("a", "007"));
     }
 }

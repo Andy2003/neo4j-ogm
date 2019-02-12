@@ -1,19 +1,26 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.neo4j.ogm.domain.simpleNetwork.abstractions;
 
 import org.neo4j.ogm.annotation.EndNode;
-import org.neo4j.ogm.annotation.GraphId;
+import org.neo4j.ogm.annotation.GeneratedValue;
+import org.neo4j.ogm.annotation.Id;
 import org.neo4j.ogm.annotation.Property;
 import org.neo4j.ogm.annotation.StartNode;
 import org.neo4j.ogm.domain.simpleNetwork.interfaces.InterfaceIdentityNode;
@@ -21,22 +28,20 @@ import org.neo4j.ogm.domain.simpleNetwork.interfaces.InterfaceStateNode;
 import org.neo4j.ogm.domain.simpleNetwork.interfaces.InterfaceTimeRelation;
 
 /**
- * @author vince
- */
-
-/**
- * @param <S> a class implementing InterfaceIdentityNode
- * @param <T> a class implementing InterfaceStateNode
- * @see issue #42
- * <p/>
+ * See issue #42
+ * <br>
  * This class posed problems for the OGM because S and T are defined as classes that extend interfaces, rather
  * than concrete classes. Prior to the fix for this issue, this OGM would only work correctly if S and T were defined
  * as extending concrete classes.
+ *
+ * @param <T> a class implementing InterfaceStateNode
+ * @param <S> a class implementing InterfaceIdentityNode
+ * @author vince
  */
 public abstract class AbstractTimeRelation<S extends InterfaceIdentityNode, T extends InterfaceStateNode>
     implements InterfaceTimeRelation<S, T> {
 
-    @GraphId
+    @Id @GeneratedValue
     private Long graphId;
 
     @StartNode

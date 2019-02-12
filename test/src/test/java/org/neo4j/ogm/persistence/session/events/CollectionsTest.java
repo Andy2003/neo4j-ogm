@@ -1,23 +1,31 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.persistence.session.events;
 
 import static org.assertj.core.api.Assertions.*;
 
 import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.List;
 
 import org.junit.Test;
+import org.neo4j.ogm.domain.cineasts.annotated.Actor;
 import org.neo4j.ogm.domain.filesystem.Document;
 import org.neo4j.ogm.session.event.Event;
 
@@ -103,5 +111,34 @@ public class CollectionsTest extends EventTestBaseClass {
         assertThat(eventListener.captured(bruce, Event.TYPE.POST_SAVE)).isTrue();
 
         assertThat(eventListener.count()).isEqualTo(14);
+    }
+
+    @Test // GH-473
+    public void shouldFireEventsOnSavingIterables() {
+
+        List<Actor> actors = Arrays.asList(new Actor("Arnold"), new Actor("Bruce"));
+
+        Iterable<Actor> iterableActors = actors.stream()::iterator;
+        session.save(iterableActors);
+
+        EnumSet<Event.TYPE> preAndPostSave = EnumSet.of(Event.TYPE.PRE_SAVE, Event.TYPE.POST_SAVE);
+        actors.forEach(actor ->
+            preAndPostSave.forEach(type -> assertThat(eventListener.captured(actor, type)))
+        );
+    }
+
+    @Test // GH-473
+    public void shouldFireEventsOnDeletingIterables() {
+
+        List<Actor> actors = Arrays.asList(new Actor("Sylvester"), new Actor("Chuck"));
+        actors.forEach(session::save);
+
+        Iterable<Actor> iterableActors = actors.stream()::iterator;
+        session.delete(iterableActors);
+
+        EnumSet<Event.TYPE> preAndPostDelete = EnumSet.of(Event.TYPE.PRE_DELETE, Event.TYPE.POST_DELETE);
+        actors.forEach(actor ->
+            preAndPostDelete.forEach(type -> assertThat(eventListener.captured(actor, type)))
+        );
     }
 }

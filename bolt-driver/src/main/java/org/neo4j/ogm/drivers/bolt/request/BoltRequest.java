@@ -1,16 +1,21 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.drivers.bolt.request;
 
 import java.util.ArrayList;
@@ -87,44 +92,62 @@ public class BoltRequest implements Request {
 
     @Override
     public Response<RowModel> execute(DefaultRequest query) {
-        final List<RowModel> rowmodels = new ArrayList<>();
+        final List<RowModel> rowModels = new ArrayList<>();
         String[] columns = null;
         for (Statement statement : query.getStatements()) {
+
             StatementResult result = executeRequest(statement);
+
             if (columns == null) {
-                List<String> columnSet = result.keys();
-                columns = columnSet.toArray(new String[columnSet.size()]);
+                try {
+                    List<String> columnSet = result.keys();
+                    columns = columnSet.toArray(new String[columnSet.size()]);
+                } catch (ClientException e) {
+                    throw new CypherException(e.code(), e.getMessage(), e);
+                }
             }
             try (RowModelResponse rowModelResponse = new RowModelResponse(result, transactionManager)) {
                 RowModel model;
                 while ((model = rowModelResponse.next()) != null) {
-                    rowmodels.add(model);
+                    rowModels.add(model);
                 }
                 result.consume();
             }
         }
 
-        final String[] finalColumns = columns;
-        return new Response<RowModel>() {
-            int currentRow = 0;
+        return new MultiStatementBasedResponse(columns, rowModels);
+    }
 
-            @Override
-            public RowModel next() {
-                if (currentRow < rowmodels.size()) {
-                    return rowmodels.get(currentRow++);
-                }
-                return null;
-            }
+    private static class MultiStatementBasedResponse implements  Response<RowModel> {
+        // This implementation is not good, but it preserved the current behaviour while fixing another bug.
+        // While the statements executed in org.neo4j.ogm.drivers.bolt.request.BoltRequest.execute(org.neo4j.ogm.request.DefaultRequest)
+        // might return different columns, only the ones of the first result are used. :(
+        private final String[] columns;
+        private final List<RowModel> rowModels;
 
-            @Override
-            public void close() {
-            }
+        private int currentRow = 0;
 
-            @Override
-            public String[] columns() {
-                return finalColumns;
+        MultiStatementBasedResponse(String[] columns, List<RowModel> rowModels) {
+            this.columns = columns;
+            this.rowModels = rowModels;
+        }
+
+        @Override
+        public RowModel next() {
+            if (currentRow < rowModels.size()) {
+                return rowModels.get(currentRow++);
             }
-        };
+            return null;
+        }
+
+        @Override
+        public void close() {
+        }
+
+        @Override
+        public String[] columns() {
+            return this.columns;
+        }
     }
 
     @Override
@@ -154,7 +177,7 @@ public class BoltRequest implements Request {
             BoltTransaction tx = (BoltTransaction) transactionManager.getCurrentTransaction();
             return tx.nativeBoltTransaction().run(cypher, parameterMap);
         } catch (ClientException | DatabaseException | TransientException ce) {
-            throw new CypherException("Error executing Cypher", ce, ce.code(), ce.getMessage());
+            throw new CypherException(ce.code(), ce.getMessage(), ce);
         }
     }
 }

@@ -1,20 +1,25 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.drivers.embedded.driver;
 
 import static java.util.Objects.*;
-import static org.neo4j.ogm.driver.ParameterConversionMode.CONVERT_ALL;
+import static org.neo4j.ogm.driver.ParameterConversionMode.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -22,17 +27,19 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collections;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.apache.commons.io.FileUtils;
 import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.graphdb.factory.GraphDatabaseBuilder;
 import org.neo4j.graphdb.factory.GraphDatabaseFactory;
-import org.neo4j.graphdb.factory.HighlyAvailableGraphDatabaseFactory;
 import org.neo4j.ogm.config.Configuration;
 import org.neo4j.ogm.driver.AbstractConfigurableDriver;
 import org.neo4j.ogm.driver.ParameterConversion;
@@ -41,6 +48,7 @@ import org.neo4j.ogm.drivers.embedded.request.EmbeddedRequest;
 import org.neo4j.ogm.drivers.embedded.transaction.EmbeddedTransaction;
 import org.neo4j.ogm.exception.ConnectionException;
 import org.neo4j.ogm.request.Request;
+import org.neo4j.ogm.support.ResourceUtils;
 import org.neo4j.ogm.transaction.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,13 +59,13 @@ import org.slf4j.LoggerFactory;
  */
 public class EmbeddedDriver extends AbstractConfigurableDriver {
 
-    private final Logger logger = LoggerFactory.getLogger(EmbeddedDriver.class);
     private static final int TIMEOUT = 60_000;
-
+    private final Logger logger = LoggerFactory.getLogger(EmbeddedDriver.class);
     private GraphDatabaseService graphDatabaseService;
 
     // required for service loader mechanism
-    public EmbeddedDriver() {}
+    public EmbeddedDriver() {
+    }
 
     public EmbeddedDriver(GraphDatabaseService graphDatabaseService) {
         this(graphDatabaseService, Collections::emptyMap);
@@ -66,7 +74,7 @@ public class EmbeddedDriver extends AbstractConfigurableDriver {
     /**
      * Create OGM EmbeddedDriver with provided embedded instance.
      *
-     * @param graphDatabaseService            Preconfigured, embedded instance.
+     * @param graphDatabaseService     Preconfigured, embedded instance.
      * @param customPropertiesSupplier Hook to provide custom configuration properties, i.e. for Cypher modification providers
      */
     public EmbeddedDriver(GraphDatabaseService graphDatabaseService,
@@ -79,6 +87,28 @@ public class EmbeddedDriver extends AbstractConfigurableDriver {
         if (!available) {
             throw new IllegalArgumentException("Provided GraphDatabaseService is not in usable state");
         }
+    }
+
+    /**
+     * Recursively deletes a directory tree.
+     *
+     * @param directory
+     * @throws IOException
+     */
+    private static void deleteDirectory(Path directory) throws IOException {
+        Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                Files.delete(dir);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     @Override
@@ -103,26 +133,41 @@ public class EmbeddedDriver extends AbstractConfigurableDriver {
                 throw new RuntimeException("Could not create/open filestore: " + fileStoreUri);
             }
 
-            // do we want to start a HA instance or a community instance?
-            String haPropertiesFileName = config.getNeo4jHaPropertiesFile();
-            if (haPropertiesFileName != null) {
-                setHAGraphDatabase(file,
-                    Thread.currentThread().getContextClassLoader().getResource(haPropertiesFileName));
-            } else {
-                setGraphDatabase(file);
+            GraphDatabaseBuilder graphDatabaseBuilder = getGraphDatabaseFactory(configuration)
+                .newEmbeddedDatabaseBuilder(file);
+
+            String neo4jConfLocation = config.getNeo4jConfLocation();
+            if(neo4jConfLocation != null) {
+                URL neo4ConfUrl = ResourceUtils.getResourceUrl(neo4jConfLocation);
+                graphDatabaseBuilder = graphDatabaseBuilder.loadPropertiesFromURL(neo4ConfUrl);
             }
+
+            this.graphDatabaseService = graphDatabaseBuilder.newGraphDatabase();
         } catch (Exception e) {
             throw new ConnectionException("Error connecting to embedded graph", e);
         }
     }
 
-    private void setHAGraphDatabase(File file, URL propertiesFileURL) {
-        graphDatabaseService = new HighlyAvailableGraphDatabaseFactory().newEmbeddedDatabaseBuilder(file)
-            .loadPropertiesFromURL(propertiesFileURL).newGraphDatabase();
-    }
+    /**
+     * Creates an instance of a {@code HighlyAvailableGraphDatabaseFactory} if requested by the config. Otherwise just
+     * a standard one.
+     *
+     * @param configuration
+     * @return
+     * @throws Exception all the exceptions that might happen during dynamic construction of things.
+     */
+    private static GraphDatabaseFactory getGraphDatabaseFactory(Configuration configuration) throws Exception {
 
-    private void setGraphDatabase(File file) {
-        graphDatabaseService = new GraphDatabaseFactory().newEmbeddedDatabase(file);
+        GraphDatabaseFactory graphDatabaseFactory;
+        if (!configuration.isEmbeddedHA()) {
+            graphDatabaseFactory = new GraphDatabaseFactory();
+        } else {
+            String classnameOfHaFactory = "org.neo4j.graphdb.factory.HighlyAvailableGraphDatabaseFactory";
+            Class<GraphDatabaseFactory> haFactoryClass = (Class<GraphDatabaseFactory>) Class.forName(classnameOfHaFactory);
+            graphDatabaseFactory = haFactoryClass.getDeclaredConstructor().newInstance();
+        }
+
+        return graphDatabaseFactory;
     }
 
     @Override
@@ -199,7 +244,7 @@ public class EmbeddedDriver extends AbstractConfigurableDriver {
                 close();
                 try {
                     logger.warn("Deleting temporary file store: " + databaseUriValue);
-                    FileUtils.deleteDirectory(path.toFile());
+                    deleteDirectory(path);
                 } catch (IOException e) {
                     throw new RuntimeException("Failed to delete temporary files in " + databaseUriValue, e);
                 }

@@ -1,38 +1,69 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.context;
 
 import static org.assertj.core.api.Assertions.*;
 
+import java.lang.reflect.Field;
+import java.util.Map;
+
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
+import org.neo4j.ogm.domain.annotations.ids.ValidAnnotations.UuidAndGenerationType;
 import org.neo4j.ogm.domain.policy.Person;
 import org.neo4j.ogm.domain.policy.Policy;
+import org.neo4j.ogm.metadata.ClassInfo;
 import org.neo4j.ogm.metadata.MetaData;
+import org.neo4j.ogm.typeconversion.UuidStringConverter;
 
 /**
  * @author Vince Bickers
  * @author Luanne Misquitta
  * @author Mark Angrish
+ * @author Michael J. Simons
  */
 public class MappingContextTest {
 
+    private static Field PRIMARY_ID_TO_NATIVE_ID_ACCESSOR;
+
+    @BeforeClass
+    public static void setUpPrimaryIdToNativeIdAccessor() {
+        // I wanted to have the test from the original PR but not exposing any new API.
+        // This is our stuff, I think it's ok to do this.
+        try {
+            PRIMARY_ID_TO_NATIVE_ID_ACCESSOR = MappingContext.class.getDeclaredField("primaryIdToNativeId");
+            PRIMARY_ID_TO_NATIVE_ID_ACCESSOR.setAccessible(true);
+        } catch (NoSuchFieldException e) {
+            e.printStackTrace();
+        }
+    }
+
     private MappingContext mappingContext;
+    private MetaData metaData;
 
     @Before
     public void setUp() {
-        mappingContext = new MappingContext(new MetaData("org.neo4j.ogm.domain.policy", "org.neo4j.ogm.context"));
+
+        this.metaData = new MetaData("org.neo4j.ogm.domain.policy", "org.neo4j.ogm.context",
+            "org.neo4j.ogm.domain.annotations.ids");
+        this.mappingContext = new MappingContext(metaData);
     }
 
     @Test
@@ -76,10 +107,7 @@ public class MappingContextTest {
             new MappedRelationship(jim.getId(), "INFLUENCES", policy.getId(), Person.class, Policy.class))).isFalse();
     }
 
-    /**
-     * @see Issue #96
-     */
-    @Test
+    @Test // #96
     public void clearOneEqualToAnother() {
 
         Person jim = new Person("jim");
@@ -167,5 +195,52 @@ public class MappingContextTest {
         assertThat(mappingContext.isDirty(rik)).isTrue();
         assertThat(mappingContext.isDirty(healthcare)).isFalse();
         assertThat(mappingContext.isDirty(immigration)).isFalse();
+    }
+
+    @Test // See #467
+    public void nativeIdsAreMappedWithoutPrimaryIdConversion() {
+        UuidAndGenerationType entity = new UuidAndGenerationType();
+
+        mappingContext.nativeId(entity);
+
+        assertThat(containsNativeId(metaData.classInfo(entity), entity.identifier)).isTrue();
+        assertThat(
+            containsNativeId(metaData.classInfo(entity), new UuidStringConverter().toGraphProperty(entity.identifier)))
+            .isFalse();
+    }
+
+    @Test // See #467
+    public void nodeEntitiesAreReplacedWithoutPrimaryIdConversion() {
+        UuidAndGenerationType entity = new UuidAndGenerationType();
+
+        mappingContext.addNodeEntity(entity);
+        Long initialNativeId = mappingContext.nativeId(entity);
+
+        mappingContext.replaceNodeEntity(entity, 999L);
+
+        assertThat(containsNativeId(metaData.classInfo(entity), entity.identifier)).isTrue();
+        assertThat(
+            containsNativeId(metaData.classInfo(entity), new UuidStringConverter().toGraphProperty(entity.identifier)))
+            .isFalse();
+
+        assertThat(mappingContext.getNodeEntity(999L)).isSameAs(entity);
+        assertThat(mappingContext.getNodeEntity(initialNativeId)).isNull();
+    }
+
+    /**
+     * Check if the context contains the nativeId for an entity
+     *
+     * @param classInfo classInfo of the relationship entity (it is needed to because primary id may not be unique
+     *                  across all relationship types)
+     * @param id        primary id of the entity
+     * @return True if nativeId is already in the context
+     */
+    private boolean containsNativeId(ClassInfo classInfo, Object id) {
+        try {
+            return ((Map) PRIMARY_ID_TO_NATIVE_ID_ACCESSOR.get(this.mappingContext))
+                .containsKey(new LabelPrimaryId(classInfo, id));
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

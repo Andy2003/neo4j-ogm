@@ -1,16 +1,21 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.testutil;
 
 import java.io.FileWriter;
@@ -20,7 +25,6 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import org.apache.commons.io.IOUtils;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.harness.ServerControls;
 import org.neo4j.harness.TestServerBuilder;
@@ -107,16 +111,14 @@ public class TestServer {
                 controls = newInProcessBuilder()
                     .withConfig("dbms.connector.bolt.type", "BOLT")
                     .withConfig("dbms.connector.bolt.enabled", "true")
-                    .withConfig("dbms.connector.bolt.listen_address", "localhost:" + String.valueOf(port))
+                    .withConfig("dbms.connector.bolt.listen_address", "localhost:" + port)
                     .newServer();
             } else {
                 controls = newInProcessBuilder()
                     .withConfig("dbms.connector.http.type", "HTTP")
                     .withConfig("dbms.connector.http.enabled", "true")
-                    .withConfig("dbms.connector.http.listen_address", "localhost:" + String.valueOf(port))
+                    .withConfig("dbms.connector.http.listen_address", "localhost:" + port)
                     .withConfig("dbms.security.auth_enabled", String.valueOf(enableAuthentication))
-                    .withConfig("org.neo4j.server.webserver.port", String.valueOf(port))
-                    .withConfig("org.neo4j.server.transaction.timeout", String.valueOf(transactionTimeoutSeconds))
                     .withConfig("dbms.transaction_timeout", String.valueOf(transactionTimeoutSeconds))
                     .withConfig("dbms.security.auth_store.location", createAuthStore())
                     .withConfig("unsupported.dbms.security.auth_store.location", createAuthStore())
@@ -141,9 +143,7 @@ public class TestServer {
 
             if (enableAuthentication) {
                 try (Writer authStoreWriter = new FileWriter(authStore.toFile())) {
-                    IOUtils.write(
-                        "neo4j:SHA-256,03C9C54BF6EEF1FF3DFEB75403401AA0EBA97860CAC187D6452A1FCF4C63353A,819BDB957119F8DFFF65604C92980A91:",
-                        authStoreWriter);
+                    authStoreWriter.write("neo4j:SHA-256,03C9C54BF6EEF1FF3DFEB75403401AA0EBA97860CAC187D6452A1FCF4C63353A,819BDB957119F8DFFF65604C92980A91:");
                 }
                 this.username = "neo4j";
                 this.password = "password";

@@ -1,14 +1,20 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.neo4j.ogm.session.delegates;
 
@@ -17,13 +23,15 @@ import static java.util.stream.Collectors.*;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.LinkedHashSet;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.neo4j.ogm.cypher.query.Pagination;
 import org.neo4j.ogm.cypher.query.SortOrder;
 import org.neo4j.ogm.exception.core.MappingException;
 import org.neo4j.ogm.metadata.ClassInfo;
-import org.neo4j.ogm.metadata.FieldInfo;
 import org.neo4j.ogm.metadata.MetaData;
 import org.neo4j.ogm.session.Neo4jSession;
 
@@ -43,17 +51,16 @@ public class LoadByInstancesDelegate extends SessionDelegate {
         }
 
         ClassInfo commonClassInfo = findCommonClassInfo(objects);
+        Function<Object, Optional<Object>> primaryIndexOrIdReader
+            = commonClassInfo.getPrimaryIndexOrIdReader();
 
-        Set<Serializable> ids = new LinkedHashSet<>();
-        for (Object o : objects) {
-            FieldInfo idField;
-            if (commonClassInfo.hasPrimaryIndexField()) {
-                idField = commonClassInfo.primaryIndexField();
-            } else {
-                idField = commonClassInfo.identityField();
-            }
-            ids.add((Serializable) idField.readProperty(o));
-        }
+        Set<Serializable> ids = objects.stream()
+            .map(primaryIndexOrIdReader::apply)
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .map(Serializable.class::cast)
+            .collect(toCollection(LinkedHashSet::new));
+
         return session.loadAll((Class<T>) commonClassInfo.getUnderlyingClass(), ids, sortOrder, pagination, depth);
     }
 

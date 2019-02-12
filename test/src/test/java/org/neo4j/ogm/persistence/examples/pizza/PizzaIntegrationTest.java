@@ -1,16 +1,21 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.persistence.examples.pizza;
 
 import static org.assertj.core.api.Assertions.*;
@@ -37,6 +42,8 @@ import org.neo4j.ogm.testutil.MultiDriverTestClass;
 
 /**
  * @author Luanne Misquitta
+ * @author Jonathan D'Orleans
+ * @author Michael J. Simons
  */
 public class PizzaIntegrationTest extends MultiDriverTestClass {
 
@@ -114,10 +121,7 @@ public class PizzaIntegrationTest extends MultiDriverTestClass {
         assertThat(loadedPizza.getToppings().contains(pepperoni)).isTrue();
     }
 
-    /**
-     * @see issue #36
-     */
-    @Test
+    @Test // See #36
     public void shouldBeAbleToSavePizzaWithOnlySauce() {
         Sauce sauce = new Sauce("Marinara");
         PizzaSauce pizzaSauce = new PizzaSauce();
@@ -138,10 +142,7 @@ public class PizzaIntegrationTest extends MultiDriverTestClass {
         assertThat(loadedPizza.getPizzaSauce().getSauce().getName()).isEqualTo(sauce.getName());
     }
 
-    /**
-     * @see issue #36
-     */
-    @Test
+    @Test // See #36
     public void shouldBeAbleToSaveAndLoadAPizzaWithSeasonings() {
         Seasoning seasoning = new Seasoning("Chilli Flakes");
         Pizza pizza = new Pizza("Crazy Hot Pizza");
@@ -158,10 +159,7 @@ public class PizzaIntegrationTest extends MultiDriverTestClass {
         assertThat(loadedPizza.getSeasonings().iterator().next().getQuantity()).isEqualTo(Quantity.DIE_TOMORROW);
     }
 
-    /**
-     * @see issue #36
-     */
-    @Test
+    @Test // See #36
     public void shouldBeAbleToSaveAndLoadAPizzaWithCheese() {
         Cheese cheese = new Cheese("Mozzarella");
         Pizza pizza = new Pizza("Cheesy!");
@@ -177,10 +175,7 @@ public class PizzaIntegrationTest extends MultiDriverTestClass {
         assertThat(loadedPizza.getCheeses().iterator().next().getQuantity()).isEqualTo(Quantity.DOUBLE);
     }
 
-    /**
-     * @see issue #36
-     */
-    @Test
+    @Test // See #36
     public void shouldBeAbleToSaveAndRetrieveFullyLoadedPizza() {
         Crust crust = new Crust("Thin Crust");
         Topping mushroom = new Topping("Mushroom");
@@ -222,10 +217,7 @@ public class PizzaIntegrationTest extends MultiDriverTestClass {
         assertThat(loadedPizza.getCheeses().iterator().next().getQuantity()).isEqualTo(Quantity.DOUBLE);
     }
 
-    /**
-     * @see Issue #61
-     */
-    @Test
+    @Test // See #61
     public void shouldUseOptimizedCypherWhenSavingRelationships() {
         Crust crust = new Crust("Thin Crust");
         session.save(crust);
@@ -254,10 +246,7 @@ public class PizzaIntegrationTest extends MultiDriverTestClass {
         assertThat(loadedPizza.getToppings().contains(pepperoni)).isTrue();
     }
 
-    /**
-     * @see issue #159
-     */
-    @Test
+    @Test // See #159
     public void shouldSyncMappedLabelsFromEntityToTheNode_and_NodeToEntity_noGetterOrSetter() {
 
         Pizza pizza = new Pizza();
@@ -306,10 +295,7 @@ public class PizzaIntegrationTest extends MultiDriverTestClass {
         assertThat(zombiePizza.getLabels().contains("Decomposed")).isTrue();
     }
 
-    /**
-     * @see issue #159
-     */
-    @Test
+    @Test // See #159
     public void shouldApplyLabelsWhenSessionClearedBeforeSave() {
 
         Pizza pizza = new Pizza();
@@ -345,10 +331,7 @@ public class PizzaIntegrationTest extends MultiDriverTestClass {
         assertThat(reloadedPizza.getLabels().contains("Stale")).isTrue();
     }
 
-    /**
-     * @see issue #159
-     */
-    @Test
+    @Test // See #159
     public void shouldRaiseExceptionWhenAmbiguousClassLabelApplied() {
 
         Session session = new SessionFactory(driver, "org.neo4j.ogm.domain.pizza", "org.neo4j.ogm.domain.music")
@@ -452,10 +435,7 @@ public class PizzaIntegrationTest extends MultiDriverTestClass {
         assertThat(((Neo4jSession) session2).context().isDirty(loadedPizza)).isFalse(); // this should pass
     }
 
-    /**
-     * @see issue #209
-     */
-    @Test
+    @Test // See #209
     public void shouldMarkLabelsAsDirtyWhenExistingCollectionUpdated() {
         Pizza entity = new Pizza();
         List<String> labels = new ArrayList<>();
@@ -510,6 +490,47 @@ public class PizzaIntegrationTest extends MultiDriverTestClass {
 
         assertOneRelationshipInDb();
     }
+
+    @Test // See 488
+    public void shouldUpdateLabelWhenLoadingEntityInSameSession() {
+        Pizza pizza = new Pizza();
+        pizza.addLabel("A0");
+        session.save(pizza);
+        session.clear();
+
+        Pizza dbPizza = session.load(Pizza.class, pizza.getId());
+        assertThat(dbPizza.getLabels().size()).isEqualTo(1);
+        assertThat(dbPizza.getLabels()).contains("A0");
+        dbPizza.removeLabel("A0");
+        dbPizza.addLabel("A1");
+        session.save(dbPizza);
+        session.clear();
+
+        dbPizza = session.load(Pizza.class, pizza.getId());
+        assertThat(dbPizza.getLabels().size()).isEqualTo(1);
+        assertThat(dbPizza.getLabels()).contains("A1");
+    }
+
+    @Test  // See 488
+    public void shouldUpdateLabelWhenLoadingEntityInNewSession() {
+        Pizza pizza = new Pizza();
+        pizza.addLabel("A0");
+        session.save(pizza);
+        Session newSession = sessionFactory.openSession();
+
+        Pizza dbPizza = newSession.load(Pizza.class, pizza.getId());
+        assertThat(dbPizza.getLabels().size()).isEqualTo(1);
+        assertThat(dbPizza.getLabels()).contains("A0");
+        dbPizza.removeLabel("A0");
+        dbPizza.addLabel("A1");
+        newSession.save(dbPizza);
+        newSession.clear();
+
+        dbPizza = newSession.load(Pizza.class, pizza.getId());
+        assertThat(dbPizza.getLabels().size()).isEqualTo(1);
+        assertThat(dbPizza.getLabels()).contains("A1");
+    }
+
 
     private void assertOneRelationshipInDb() {
         Result result = session.query("MATCH (p:Pizza)-[r]-() return count(r) as c", new HashMap<String, Object>());

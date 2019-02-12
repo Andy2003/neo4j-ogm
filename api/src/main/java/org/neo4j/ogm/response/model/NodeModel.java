@@ -1,16 +1,21 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.response.model;
 
 import static java.util.stream.Collectors.*;
@@ -18,8 +23,13 @@ import static java.util.stream.Collectors.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Stream;
 
 import org.neo4j.ogm.model.Node;
 import org.neo4j.ogm.model.Property;
@@ -27,15 +37,24 @@ import org.neo4j.ogm.model.Property;
 /**
  * @author Michal Bachman
  * @author Mark Angrish
+ * @author Michael J. Simons
  */
-public class NodeModel implements Node {
+public class NodeModel extends AbstractPropertyContainer implements Node {
 
-    private Long id;
+    private final Long id;
     private Property<String, Long> version;
     private String[] labels;
-    private String[] removedLabels;
     private List<Property<String, Object>> properties = new ArrayList<>();
     private String primaryIndex;
+
+    /**
+     * Those are the previous, dynamic labels if any.
+     */
+    private Set<String> previousDynamicLabels = Collections.emptySet();
+
+    public NodeModel(Long id) {
+        this.id = id;
+    }
 
     @Override
     public List<Property<String, Object>> getPropertyList() {
@@ -72,15 +91,6 @@ public class NodeModel implements Node {
         return labels;
     }
 
-    @Override
-    public String[] getRemovedLabels() {
-        return removedLabels;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
     public void setVersion(Property<String, Long> version) {
         this.version = version;
     }
@@ -90,14 +100,18 @@ public class NodeModel implements Node {
         return version != null;
     }
 
+    @Override
+    public Set<String> getPreviousDynamicLabels() {
+        return Collections.unmodifiableSet(previousDynamicLabels);
+    }
+
+    public void setPreviousDynamicLabels(Set<String> previousDynamicLabels) {
+        this.previousDynamicLabels = new HashSet<>(previousDynamicLabels);
+    }
+
     public void setLabels(String[] labels) {
         Arrays.sort(labels);
         this.labels = labels;
-    }
-
-    public void removeLabels(String[] labels) {
-        Arrays.sort(labels);
-        this.removedLabels = labels;
     }
 
     public Object property(String key) {
@@ -108,32 +122,26 @@ public class NodeModel implements Node {
         return null;
     }
 
+    @Override
     public String labelSignature() {
-        ArrayList<String> allLabels = new ArrayList<>();
-        Collections.addAll(allLabels, labels);
-
-        if (removedLabels != null) {
-            allLabels.add("_SEPARATOR_");
-            Collections.addAll(allLabels, removedLabels);
-        }
-
-        return allLabels.stream().collect(joining(","));
+        return Stream.concat(
+            Arrays.stream(labels),
+            Optional.ofNullable(previousDynamicLabels).orElseGet(HashSet::new).stream()
+        ).distinct().collect(joining(","));
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o)
             return true;
-        if (o == null || getClass() != o.getClass())
+        if (!(o instanceof NodeModel))
             return false;
-
         NodeModel nodeModel = (NodeModel) o;
-
         return id.equals(nodeModel.id);
     }
 
     @Override
     public int hashCode() {
-        return id.hashCode();
+        return Objects.hash(id);
     }
 }

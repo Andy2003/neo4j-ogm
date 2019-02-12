@@ -1,16 +1,21 @@
 /*
- * Copyright (c) 2002-2018 "Neo Technology,"
- * Network Engine for Objects in Lund AB [http://neotechnology.com]
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
  *
- * This product is licensed to you under the Apache License, Version 2.0 (the "License").
- * You may not use this product except in compliance with the License.
+ * This file is part of Neo4j.
  *
- * This product may include a number of subcomponents with
- * separate copyright notices and license terms. Your use of the source
- * code for these subcomponents is subject to the terms and
- *  conditions of the subcomponent's license, as noted in the LICENSE file.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.neo4j.ogm.config;
 
 import static org.assertj.core.api.Assertions.*;
@@ -20,7 +25,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-import org.apache.commons.io.FileUtils;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.junit.AfterClass;
@@ -31,6 +35,7 @@ import org.junit.Test;
 import org.neo4j.ogm.driver.Driver;
 import org.neo4j.ogm.drivers.http.driver.HttpDriver;
 import org.neo4j.ogm.session.SessionFactory;
+import org.neo4j.ogm.testutil.FileUtils;
 
 /**
  * @author vince
@@ -39,7 +44,6 @@ public class DriverServiceTest {
 
     private static final Path TMP_NEO4J = Paths.get(System.getProperty("java.io.tmpdir"), "neo4jDriverServiceTest.db");
     private static final Path TMP_NEO4J_DB = Paths.get(TMP_NEO4J.toFile().getAbsolutePath() + "/database");
-
 
     @BeforeClass
     public static void createEmbeddedStore() {
@@ -52,7 +56,7 @@ public class DriverServiceTest {
 
     @AfterClass
     public static void deleteEmbeddedStore() throws IOException {
-        FileUtils.deleteDirectory(TMP_NEO4J.toFile());
+        FileUtils.deleteDirectory(TMP_NEO4J);
     }
 
     @Test
