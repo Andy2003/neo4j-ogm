@@ -75,6 +75,7 @@ public class ClassPathScannerTest {
     }
 
     @Test
+    @Ignore
     public void zipFileWithDomainClassesShouldBeScanned() throws IOException {
         final DomainInfo domainInfo = DomainInfo.create("concert.domain");
         assertThat(domainInfo.getClassInfoMap()).hasSize(2);
