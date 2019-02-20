@@ -27,7 +27,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.neo4j.ogm.annotation.EndNode;
 import org.neo4j.ogm.annotation.StartNode;
 import org.neo4j.ogm.context.EntityRowModelMapper;
-import org.neo4j.ogm.context.GraphEntityMapper;
 import org.neo4j.ogm.context.ResponseMapper;
 import org.neo4j.ogm.context.RestModelMapper;
 import org.neo4j.ogm.context.RestStatisticsModel;
@@ -91,7 +90,7 @@ public class ExecuteQueriesDelegate extends SessionDelegate {
         if (type == null || type.equals(Void.class)) {
             throw new RuntimeException("Supplied type must not be null or void.");
         }
-        return executeAndMap(type, cypher, parameters, new EntityRowModelMapper());
+        return executeAndMap(type, cypher, parameters);
     }
 
     public Result query(String cypher, Map<String, ?> parameters, boolean readOnly) {
@@ -99,11 +98,9 @@ public class ExecuteQueriesDelegate extends SessionDelegate {
         validateQuery(cypher, parameters, readOnly);
 
         RestModelRequest request = new DefaultRestModelRequest(cypher, parameters);
-        ResponseMapper mapper = new RestModelMapper(new GraphEntityMapper(session.metaData(), session.context()
-            , session.getEntityInstantiator()),
-            session.metaData());
+        ResponseMapper mapper = new RestModelMapper(session.getResponseMapper(false), session.metaData());
 
-        return session.doInTransaction( () -> {
+        return session.doInTransaction(() -> {
 
             try (Response<RestModel> response = session.requestHandler().execute(request)) {
                 Iterable<RestStatisticsModel> mappedModel = mapper.map(null, response);
@@ -118,19 +115,18 @@ public class ExecuteQueriesDelegate extends SessionDelegate {
         }, Transaction.Type.READ_WRITE);
     }
 
-    private <T> Iterable<T> executeAndMap(Class<T> type, String cypher, Map<String, ?> parameters,
-        ResponseMapper mapper) {
+    private <T> Iterable<T> executeAndMap(Class<T> type, String cypher, Map<String, ?> parameters) {
 
-        return session.<Iterable<T>>doInTransaction( () -> {
-            if (type != null && session.metaData().classInfo(type.getSimpleName()) != null) {
+        return session.<Iterable<T>>doInTransaction(() -> {
+            if (type != null && session.metaData().classInfo(type.getTypeName()) != null) {
                 GraphModelRequest request = new DefaultGraphModelRequest(cypher, parameters);
                 try (Response<GraphModel> response = session.requestHandler().execute(request)) {
-                    return new GraphEntityMapper(session.metaData(), session.context(), session.getEntityInstantiator()).map(type, response);
+                    return session.getResponseMapper(true).map(type, response);
                 }
             } else {
                 RowModelRequest request = new DefaultRowModelRequest(cypher, parameters);
                 try (Response<RowModel> response = session.requestHandler().execute(request)) {
-                    return mapper.map(type, response);
+                    return new EntityRowModelMapper().map(type, response);
                 }
             }
         }, Transaction.Type.READ_WRITE);
@@ -173,7 +169,7 @@ public class ExecuteQueriesDelegate extends SessionDelegate {
             }
             countStatement = new CountStatements().countNodes(labels);
         }
-        return session.doInTransaction( () -> {
+        return session.doInTransaction(() -> {
             try (Response<RowModel> response = session.requestHandler().execute((RowModelRequest) countStatement)) {
                 RowModel queryResult = response.next();
                 return queryResult == null ? 0 : ((Number) queryResult.getValues()[0]).longValue();

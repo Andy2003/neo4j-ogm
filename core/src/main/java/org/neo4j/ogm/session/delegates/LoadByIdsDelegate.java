@@ -27,13 +27,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
-import org.neo4j.ogm.context.GraphEntityMapper;
 import org.neo4j.ogm.cypher.query.DefaultGraphModelRequest;
 import org.neo4j.ogm.cypher.query.Pagination;
 import org.neo4j.ogm.cypher.query.PagingAndSortingQuery;
 import org.neo4j.ogm.cypher.query.SortOrder;
 import org.neo4j.ogm.metadata.ClassInfo;
-import org.neo4j.ogm.metadata.FieldInfo;
 import org.neo4j.ogm.model.GraphModel;
 import org.neo4j.ogm.request.GraphModelRequest;
 import org.neo4j.ogm.response.Response;
@@ -74,7 +72,7 @@ public class LoadByIdsDelegate extends SessionDelegate {
         GraphModelRequest request = new DefaultGraphModelRequest(qry.getStatement(), qry.getParameters());
         return session.doInTransaction( () -> {
             try (Response<GraphModel> response = session.requestHandler().execute(request)) {
-                Iterable<T> mapped = new GraphEntityMapper(session.metaData(), session.context(), session.getEntityInstantiator()).map(type, response);
+                Iterable<T> mapped = session.getResponseMapper(true).map(type, response);
 
                 if (sortOrder.sortClauses().isEmpty()) {
                     return sortResultsByIds(type, ids, mapped);

@@ -21,7 +21,6 @@ package org.neo4j.ogm.session.delegates;
 import java.io.Serializable;
 
 import org.neo4j.ogm.annotation.RelationshipEntity;
-import org.neo4j.ogm.context.GraphEntityMapper;
 import org.neo4j.ogm.cypher.query.DefaultGraphModelRequest;
 import org.neo4j.ogm.cypher.query.PagingAndSortingQuery;
 import org.neo4j.ogm.metadata.ClassInfo;
@@ -79,10 +78,9 @@ public class LoadOneDelegate extends SessionDelegate {
 
         GraphModelRequest request = new DefaultGraphModelRequest(qry.getStatement(), qry.getParameters());
 
-        return session.doInTransaction( () -> {
+        return session.doInTransaction(() -> {
             try (Response<GraphModel> response = session.requestHandler().execute(request)) {
-                new GraphEntityMapper(session.metaData(), session.context(), session.getEntityInstantiator())
-                    .map(type, response);
+                session.getResponseMapper(true).map(type, response);
                 return lookup(type, id);
             }
         }, Transaction.Type.READ_ONLY);

@@ -19,6 +19,7 @@
 package org.neo4j.ogm.session;
 
 import static java.util.Collections.*;
+import static org.neo4j.ogm.session.LoadStrategy.*;
 
 import java.io.Serializable;
 import java.util.Collection;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 
+import org.neo4j.ogm.context.GraphEntityMapper;
 import org.neo4j.ogm.context.MappingContext;
 import org.neo4j.ogm.context.WriteProtectionTarget;
 import org.neo4j.ogm.cypher.Filter;
@@ -53,6 +55,8 @@ import org.neo4j.ogm.session.event.EventListener;
 import org.neo4j.ogm.session.request.OptimisticLockingChecker;
 import org.neo4j.ogm.session.request.strategy.LoadClauseBuilder;
 import org.neo4j.ogm.session.request.strategy.QueryStatements;
+import org.neo4j.ogm.session.request.strategy.impl.LazyLoadNodeClauseBuilder;
+import org.neo4j.ogm.session.request.strategy.impl.LazyLoadRelationshipClauseBuilder;
 import org.neo4j.ogm.session.request.strategy.impl.NodeQueryStatements;
 import org.neo4j.ogm.session.request.strategy.impl.PathNodeLoadClauseBuilder;
 import org.neo4j.ogm.session.request.strategy.impl.PathRelationshipLoadClauseBuilder;
@@ -399,10 +403,10 @@ public class Neo4jSession implements Session {
     }
 
     /*
-    *----------------------------------------------------------------------------------------------------------
-    * ExecuteQueriesDelegate
-    *----------------------------------------------------------------------------------------------------------
-    */
+     *----------------------------------------------------------------------------------------------------------
+     * ExecuteQueriesDelegate
+     *----------------------------------------------------------------------------------------------------------
+     */
     @Override
     public <T> T queryForObject(Class<T> type, String cypher, Map<String, ?> parameters) {
         return executeQueriesDelegate.queryForObject(type, cypher, parameters);
@@ -434,10 +438,10 @@ public class Neo4jSession implements Session {
     }
 
     /*
-    *----------------------------------------------------------------------------------------------------------
-    * DeleteDelegate
-    *----------------------------------------------------------------------------------------------------------
-    */
+     *----------------------------------------------------------------------------------------------------------
+     * DeleteDelegate
+     *----------------------------------------------------------------------------------------------------------
+     */
     @Override
     public void purgeDatabase() {
         deleteDelegate.purgeDatabase();
@@ -459,10 +463,10 @@ public class Neo4jSession implements Session {
     }
 
     /*
-    *----------------------------------------------------------------------------------------------------------
-    * SaveDelegate
-    *----------------------------------------------------------------------------------------------------------
-    */
+     *----------------------------------------------------------------------------------------------------------
+     * SaveDelegate
+     *----------------------------------------------------------------------------------------------------------
+     */
     @Override
     public <T> void save(T object) {
         saveDelegate.save(object);
@@ -484,7 +488,7 @@ public class Neo4jSession implements Session {
      * to be used with {@literal null} again to remove the custom write protection strategy before applying the simple
      * one here.
      *
-     * @param target The target to which  the write protection should be applied
+     * @param target     The target to which  the write protection should be applied
      * @param protection A predicate determines per entity if write protection has to be applied or node.
      */
     public void addWriteProtection(WriteProtectionTarget target, Predicate<Object> protection) {
@@ -510,10 +514,10 @@ public class Neo4jSession implements Session {
     }
 
     /*
-    *----------------------------------------------------------------------------------------------------------
-    * TransactionsDelegate
-    *----------------------------------------------------------------------------------------------------------
-    */
+     *----------------------------------------------------------------------------------------------------------
+     * TransactionsDelegate
+     *----------------------------------------------------------------------------------------------------------
+     */
     @Override
     public Transaction beginTransaction() {
         return txManager.openTransaction();
@@ -536,19 +540,20 @@ public class Neo4jSession implements Session {
     }
 
     /**
-     * @see Neo4jSession#doInTransaction(TransactionalUnitOfWork, org.neo4j.ogm.transaction.Transaction.Type)
      * @param function The code to execute.
-     * @param txType Transaction type, readonly or not.
+     * @param txType   Transaction type, readonly or not.
+     * @see Neo4jSession#doInTransaction(TransactionalUnitOfWork, org.neo4j.ogm.transaction.Transaction.Type)
      */
     public void doInTransaction(TransactionalUnitOfWorkWithoutResult function, Transaction.Type txType) {
-        doInTransaction( () -> {
+        doInTransaction(() -> {
             function.doInTransaction();
             return null;
         }, txType);
     }
 
-    public void doInTransaction(TransactionalUnitOfWorkWithoutResult function, boolean forceTx, Transaction.Type txType) {
-        doInTransaction( () -> {
+    public void doInTransaction(TransactionalUnitOfWorkWithoutResult function, boolean forceTx,
+        Transaction.Type txType) {
+        doInTransaction(() -> {
             function.doInTransaction();
             return null;
         }, forceTx, txType);
@@ -562,9 +567,10 @@ public class Neo4jSession implements Session {
      * For internal use only. Opens a new transaction if necessary before running statements
      * in case an explicit transaction does not exist. It is designed to be the central point
      * for handling exceptions coming from the DB and apply commit / rollback rules.
+     *
      * @param function The callback to execute.
-     * @param <T> The result type.
-     * @param txType Transaction type, readonly or not.
+     * @param <T>      The result type.
+     * @param txType   Transaction type, readonly or not.
      * @return The result of the transaction function.
      */
     public <T> T doInTransaction(TransactionalUnitOfWork<T> function, boolean forceTx, Transaction.Type txType) {
@@ -589,7 +595,7 @@ public class Neo4jSession implements Session {
             throw e;
         } catch (Throwable e) {
             logger.warn("Error executing query : {}. Rolling back transaction.", e.getMessage());
-            if(transactionManager().canRollback()) {
+            if (transactionManager().canRollback()) {
                 transaction.rollback();
             }
             throw e;
@@ -609,7 +615,7 @@ public class Neo4jSession implements Session {
      *----------------------------------------------------------------------------------------------------------
      * GraphIdDelegate
      *----------------------------------------------------------------------------------------------------------
-    */
+     */
     @Override
     public Long resolveGraphIdFor(Object possibleEntity) {
         return graphIdDelegate.resolveGraphIdFor(possibleEntity);
@@ -706,6 +712,11 @@ public class Neo4jSession implements Session {
         this.loadStrategy = loadStrategy;
     }
 
+    public GraphEntityMapper getResponseMapper(boolean supportsLazyLoading) {
+        return new GraphEntityMapper(metaData, mappingContext, entityInstantiator, this,
+            supportsLazyLoading && loadStrategy == LAZY_LOAD_STRATEGY);
+    }
+
     private LoadClauseBuilder loadNodeClauseBuilder(int depth) {
         if (depth < 0) {
             return new PathNodeLoadClauseBuilder();
@@ -717,6 +728,9 @@ public class Neo4jSession implements Session {
 
             case SCHEMA_LOAD_STRATEGY:
                 return new SchemaNodeLoadClauseBuilder(metaData.getSchema());
+
+            case LAZY_LOAD_STRATEGY:
+                return new LazyLoadNodeClauseBuilder(metaData);
 
             default:
                 throw new IllegalStateException("Unknown loadStrategy " + loadStrategy);
@@ -734,6 +748,9 @@ public class Neo4jSession implements Session {
 
             case SCHEMA_LOAD_STRATEGY:
                 return new SchemaRelationshipLoadClauseBuilder(metaData.getSchema());
+
+            case LAZY_LOAD_STRATEGY:
+                return new LazyLoadRelationshipClauseBuilder(metaData);
 
             default:
                 throw new IllegalStateException("Unknown loadStrategy " + loadStrategy);

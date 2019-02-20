@@ -410,7 +410,7 @@ public class CineastsRelationshipEntityTest extends MultiDriverTestClass {
         movies = session.loadAll(Movie.class,
             new Filter("title", ComparisonOperator.EQUALS, "Harry Potter and the Order of the Phoenix"));
         phoenix = movies.iterator().next();
-        assertThat(phoenix.getRatings()).isNull();
+        assertThat(phoenix.getRatings()).isNullOrEmpty();
 
         movies = session.loadAll(Movie.class,
             new Filter("title", ComparisonOperator.EQUALS, "Harry Potter and the Goblet of Fire"));
@@ -467,15 +467,15 @@ public class CineastsRelationshipEntityTest extends MultiDriverTestClass {
         phoenix = session.loadAll(Movie.class,
             new Filter("title", ComparisonOperator.EQUALS, "Harry Potter and the Order of the Phoenix")).iterator()
             .next();
-        assertThat(phoenix.getRatings()).isNull();
+        assertThat(phoenix.getRatings()).isNullOrEmpty();
 
         goblet = session
             .loadAll(Movie.class, new Filter("title", ComparisonOperator.EQUALS, "Harry Potter and the Goblet of Fire"))
             .iterator().next();
-        assertThat(goblet.getRatings()).isNull();
+        assertThat(goblet.getRatings()).isNullOrEmpty();
 
         adam = session.loadAll(User.class, new Filter("name", ComparisonOperator.EQUALS, "Adam")).iterator().next();
-        assertThat(adam.getRatings()).isNull();
+        assertThat(adam.getRatings()).isNullOrEmpty();
     }
 
     /**
@@ -528,7 +528,7 @@ public class CineastsRelationshipEntityTest extends MultiDriverTestClass {
         phoenix = session.loadAll(Movie.class,
             new Filter("title", ComparisonOperator.EQUALS, "Harry Potter and the Order of the Phoenix")).iterator()
             .next();
-        assertThat(phoenix.getRatings()).isNull();
+        assertThat(phoenix.getRatings()).isNullOrEmpty();
 
         goblet = session
             .loadAll(Movie.class, new Filter("title", ComparisonOperator.EQUALS, "Harry Potter and the Goblet of Fire"))
