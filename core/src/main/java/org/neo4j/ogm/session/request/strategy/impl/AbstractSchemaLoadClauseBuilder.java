@@ -25,7 +25,9 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.neo4j.ogm.metadata.ClassInfo;
+import org.neo4j.ogm.metadata.FieldInfo;
 import org.neo4j.ogm.metadata.MetaData;
+import org.neo4j.ogm.metadata.reflect.EntityAccessManager;
 import org.neo4j.ogm.metadata.schema.Node;
 import org.neo4j.ogm.metadata.schema.Relationship;
 import org.neo4j.ogm.metadata.schema.Schema;
@@ -70,16 +72,39 @@ public abstract class AbstractSchemaLoadClauseBuilder {
             .map(metaData::classInfo)
             .<Collection<Relationship>>map(classInfo -> relationships
                 .stream()
-                .filter(relationship -> doesNotSupportLazyLoading(classInfo, relationship))
+                .filter(relationship -> doesNotSupportLazyLoading(classInfo, relationship, metaData, node))
                 .collect(Collectors.toList()))
             .orElse(relationships);
     }
 
-    private Boolean doesNotSupportLazyLoading(ClassInfo info, Relationship relationship) {
-        return Optional
-            .ofNullable(info.relationshipField(relationship.type()))
-            .map(fieldInfo -> !fieldInfo.supportsLazyLoading())
-            .orElse(true);
+    private Boolean doesNotSupportLazyLoading(ClassInfo info,
+        Relationship relationship,
+        MetaData metaData,
+        Node node) {
+
+        ClassInfo relationType = metaData.classInfo(relationship.type());
+        FieldInfo fieldInfo = null;
+        if (relationType == null) {
+            relationType = relationship.other(node)
+                .label()
+                .map(metaData::classInfo)
+                .orElse(null);
+        }
+        if (relationType != null) {
+            fieldInfo = EntityAccessManager.getRelationalWriter(
+                info,
+                relationship.type(),
+                relationship.direction(node),
+                relationType.getUnderlyingClass()
+            );
+        }
+        if (fieldInfo == null) {
+            fieldInfo = info.relationshipField(relationship.type());
+        }
+        if (fieldInfo != null) {
+            return !fieldInfo.supportsLazyLoading();
+        }
+        return true;
     }
 
     protected void expand(StringBuilder sb, String variable, Node node, Collection<Relationship> relationships,

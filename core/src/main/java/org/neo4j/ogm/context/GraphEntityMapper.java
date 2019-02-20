@@ -24,7 +24,6 @@ import static org.neo4j.ogm.metadata.reflect.EntityAccessManager.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
-import java.util.stream.StreamSupport;
 
 import org.neo4j.ogm.annotation.EndNode;
 import org.neo4j.ogm.annotation.StartNode;
@@ -277,40 +276,32 @@ public class GraphEntityMapper implements ResponseMapper<GraphModel> {
         return classInfo;
     }
 
-    private Object initLazyBag(FieldInfo fieldInfo, Long id) {
+    private <T> LazyCollection<T, ? extends Collection<T>> initLazyCollection(FieldInfo fieldInfo, Long id) {
         if (SortedSet.class.isAssignableFrom(fieldInfo.type())) {
-            return new LazySortedSet(session, fieldInfo, id);
+            return new LazySortedSet<>(session, fieldInfo, id);
         }
         if (Set.class.isAssignableFrom(fieldInfo.type())) {
-            return new LazySet(session, fieldInfo, id);
+            return new LazySet<>(session, fieldInfo, id);
         }
-        return new LazyList(session, fieldInfo, id);
+        return new LazyList<>(session, fieldInfo, id);
     }
 
-    private void resetLazyObjects(ClassInfo classInfo, Node node, Object entity) {
+    private <T> void resetLazyObjects(ClassInfo classInfo, Node node, Object entity) {
         for (FieldInfo field : classInfo.relationshipFields()) {
             if (field.isIterable()) {
                 Object iterable = field.read(entity);
                 if (iterable instanceof LazyCollection) {
-                    if (((LazyCollection) iterable).isInitialized()) {
-                        for (Object o : (LazyCollection) iterable) {
-                            resetRelation(node, field, o);
-                        }
-                    }
                     if (!((LazyCollection) iterable).isModified()) {
                         ((LazyCollection) iterable).reset();
                     }
                 } else {
-                    if (iterable != null) {
-                        StreamSupport
-                            .stream(((Iterable<?>) iterable).spliterator(), false)
-                            .forEach(o -> resetRelation(node, field, o));
+                    LazyCollection<?, ?> lazyCollection = initLazyCollection(field, node.getId());
+                    if (iterable instanceof Collection) {
+                        Collection<?> existingCollection = (Collection) iterable;
+                        lazyCollection.addLoadedData((Collection) existingCollection);
                     }
-                    field.write(entity, initLazyBag(field, node.getId()));
+                    field.write(entity, lazyCollection);
                 }
-            } else if (entity instanceof SupportsLazyLoading) {
-                Object currentValue = field.read(entity);
-                resetRelation(node, field, currentValue);
             }
         }
         if (entity instanceof SupportsLazyLoading) {
@@ -319,26 +310,6 @@ public class GraphEntityMapper implements ResponseMapper<GraphModel> {
                 lazyInitializer.reset();
             }
         }
-    }
-
-    private void resetRelation(Node node, FieldInfo field, Object currentValue) {
-        if (currentValue == null) {
-            return;
-        }
-        Long identity = mappingContext.nativeId(currentValue);
-        if (identity == null) {
-            return;
-        }
-        String direction = field.relationshipDirection(OUTGOING);
-        MappedRelationship rel = null;
-        if (INCOMING.equals(direction)) {
-            rel = new MappedRelationship(identity, field.relationshipType(), node.getId(),
-                currentValue.getClass(), ClassUtils.getType(field.typeParameterDescriptor()));
-        } else if (OUTGOING.equals(direction)) {
-            rel = new MappedRelationship(node.getId(), field.relationshipType(), identity,
-                ClassUtils.getType(field.typeParameterDescriptor()), currentValue.getClass());
-        }
-        mappingContext.removeRelationship(rel);
     }
 
     /**
