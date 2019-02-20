@@ -35,10 +35,14 @@ import org.neo4j.ogm.cypher.compiler.NodeBuilder;
 import org.neo4j.ogm.cypher.compiler.PropertyContainerBuilder;
 import org.neo4j.ogm.cypher.compiler.RelationshipBuilder;
 import org.neo4j.ogm.exception.core.MappingException;
+import org.neo4j.ogm.lazyloading.LazyCollection;
+import org.neo4j.ogm.lazyloading.LazyInitializer;
+import org.neo4j.ogm.lazyloading.SupportsLazyLoading;
 import org.neo4j.ogm.metadata.AnnotationInfo;
 import org.neo4j.ogm.metadata.ClassInfo;
 import org.neo4j.ogm.metadata.FieldInfo;
 import org.neo4j.ogm.metadata.MetaData;
+import org.neo4j.ogm.session.Neo4jSession;
 import org.neo4j.ogm.utils.ClassUtils;
 import org.neo4j.ogm.utils.EntityUtils;
 import org.slf4j.Logger;
@@ -59,10 +63,12 @@ public class EntityGraphMapper implements EntityMapper {
     private final MetaData metaData;
     private final MappingContext mappingContext;
     private final Compiler compiler = new MultiStatementCypherCompiler();
+    private Neo4jSession session;
     /**
      * Default supplier for write protection: Always write all the stuff.
      */
-    private Optional<BiFunction<WriteProtectionTarget, Class<?>, Predicate<Object>>> optionalWriteProtectionSupplier = Optional.empty();
+    private Optional<BiFunction<WriteProtectionTarget, Class<?>, Predicate<Object>>> optionalWriteProtectionSupplier = Optional
+        .empty();
 
     /**
      * Constructs a new {@link EntityGraphMapper} that uses the given {@link MetaData}.
@@ -75,7 +81,13 @@ public class EntityGraphMapper implements EntityMapper {
         this.mappingContext = mappingContext;
     }
 
-    public void addWriteProtection(BiFunction<WriteProtectionTarget, Class<?>, Predicate<Object>> writeProtectionSupplier) {
+    public EntityGraphMapper(Neo4jSession session) {
+        this(session.metaData(), session.context());
+        this.session = session;
+    }
+
+    public void addWriteProtection(
+        BiFunction<WriteProtectionTarget, Class<?>, Predicate<Object>> writeProtectionSupplier) {
 
         this.optionalWriteProtectionSupplier = Optional.ofNullable(writeProtectionSupplier);
     }
@@ -358,7 +370,12 @@ public class EntityGraphMapper implements EntityMapper {
 
         ClassInfo srcInfo = metaData.classInfo(entity);
         Long srcIdentity = mappingContext.nativeId(entity);
-
+        if (entity instanceof SupportsLazyLoading) {
+            LazyInitializer lazyInitializer = ((SupportsLazyLoading) entity).getLazyInitializer();
+            if (lazyInitializer != null) {
+                lazyInitializer.validateSession(session);
+            }
+        }
         for (FieldInfo reader : srcInfo.relationshipFields()) {
 
             String relationshipType = reader.relationshipType();
@@ -405,6 +422,12 @@ public class EntityGraphMapper implements EntityMapper {
                 relNodes.sourceId = srcIdentity;
                 Boolean mapBothWays = null;
                 if (relatedObject instanceof Iterable) {
+                    if (relatedObject instanceof LazyCollection) {
+                        if (((LazyCollection) relatedObject).isInitialized()) {
+                            ((LazyCollection) relatedObject).validateSession(session);
+                        }
+                        relatedObject = ((LazyCollection) relatedObject).getLoadedEntities();
+                    }
                     for (Object tgtObject : (Iterable<?>) relatedObject) {
                         if (mapBothWays == null) {
                             mapBothWays = bothWayMappingRequired(entity, relationshipType, tgtObject,
@@ -984,6 +1007,13 @@ public class EntityGraphMapper implements EntityMapper {
                     Object target = tgtRelReader.read(tgtObject);
                     if (target != null) {
                         if (target instanceof Iterable) {
+                            if (target instanceof LazyCollection) {
+                                if (((LazyCollection) target).isInitialized()) {
+                                    ((LazyCollection) target).validateSession(session);
+                                } else {
+                                    continue;
+                                }
+                            }
                             for (Object relatedObject : (Iterable<?>) target) {
                                 if (relatedObject.equals(srcObject)) { //the target is mapped to the source as well
                                     mapBothWays = true;

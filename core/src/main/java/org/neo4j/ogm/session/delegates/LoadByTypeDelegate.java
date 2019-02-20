@@ -21,7 +21,6 @@ package org.neo4j.ogm.session.delegates;
 import java.util.Collection;
 import java.util.Collections;
 
-import org.neo4j.ogm.context.GraphEntityMapper;
 import org.neo4j.ogm.context.GraphRowListModelMapper;
 import org.neo4j.ogm.cypher.Filter;
 import org.neo4j.ogm.cypher.Filters;
@@ -91,20 +90,20 @@ public class LoadByTypeDelegate extends SessionDelegate {
         query.setSortOrder(sortOrderWithResolvedProperties)
             .setPagination(pagination);
 
-        return session.doInTransaction( () -> {
+        return session.doInTransaction(() -> {
             if (query.needsRowResult()) {
                 DefaultGraphRowListModelRequest graphRowListModelRequest = new DefaultGraphRowListModelRequest(
                     query.getStatement(), query.getParameters());
-                try (Response<GraphRowListModel> response = session.requestHandler().execute(graphRowListModelRequest)) {
-                    return (Collection<T>) new GraphRowListModelMapper(session.metaData(), session.context(),
-                        session.getEntityInstantiator())
+                try (Response<GraphRowListModel> response = session.requestHandler()
+                    .execute(graphRowListModelRequest)) {
+                    return (Collection<T>) new GraphRowListModelMapper(session.getResponseMapper(true),
+                        session.metaData(), session.context())
                         .map(type, response);
                 }
             } else {
                 GraphModelRequest request = new DefaultGraphModelRequest(query.getStatement(), query.getParameters());
                 try (Response<GraphModel> response = session.requestHandler().execute(request)) {
-                    return (Collection<T>) new GraphEntityMapper(session.metaData(), session.context()
-                        , session.getEntityInstantiator()).map(type, response);
+                    return (Collection<T>) session.getResponseMapper(true).map(type, response);
                 }
             }
         }, Transaction.Type.READ_WRITE);

@@ -24,10 +24,17 @@ import static org.neo4j.ogm.metadata.reflect.EntityAccessManager.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.stream.StreamSupport;
 
 import org.neo4j.ogm.annotation.EndNode;
 import org.neo4j.ogm.annotation.StartNode;
 import org.neo4j.ogm.exception.core.MappingException;
+import org.neo4j.ogm.lazyloading.LazyCollection;
+import org.neo4j.ogm.lazyloading.LazyInitializer;
+import org.neo4j.ogm.lazyloading.LazyList;
+import org.neo4j.ogm.lazyloading.LazySet;
+import org.neo4j.ogm.lazyloading.LazySortedSet;
+import org.neo4j.ogm.lazyloading.SupportsLazyLoading;
 import org.neo4j.ogm.metadata.ClassInfo;
 import org.neo4j.ogm.metadata.FieldInfo;
 import org.neo4j.ogm.metadata.MetaData;
@@ -41,6 +48,7 @@ import org.neo4j.ogm.model.Property;
 import org.neo4j.ogm.response.Response;
 import org.neo4j.ogm.response.model.PropertyModel;
 import org.neo4j.ogm.session.EntityInstantiator;
+import org.neo4j.ogm.session.Neo4jSession;
 import org.neo4j.ogm.typeconversion.CompositeAttributeConverter;
 import org.neo4j.ogm.utils.ClassUtils;
 import org.neo4j.ogm.utils.EntityUtils;
@@ -51,6 +59,7 @@ import org.slf4j.LoggerFactory;
  * @author Vince Bickers
  * @author Luanne Misquitta
  * @author Michael J. Simons
+ * @author Andreas Berger
  */
 public class GraphEntityMapper implements ResponseMapper<GraphModel> {
 
@@ -68,13 +77,18 @@ public class GraphEntityMapper implements ResponseMapper<GraphModel> {
     }
 
     private final MappingContext mappingContext;
+    private final Neo4jSession session;
+    private final boolean lazyLoading;
     private final EntityFactory entityFactory;
     private final MetaData metadata;
 
-    public GraphEntityMapper(MetaData metaData, MappingContext mappingContext, EntityInstantiator entityInstantiator) {
+    public GraphEntityMapper(MetaData metaData, MappingContext mappingContext, EntityInstantiator entityInstantiator,
+        Neo4jSession session, boolean lazyLoading) {
         this.metadata = metaData;
         this.entityFactory = new EntityFactory(metadata, entityInstantiator);
         this.mappingContext = mappingContext;
+        this.session = session;
+        this.lazyLoading = lazyLoading;
     }
 
     @Override
@@ -82,7 +96,7 @@ public class GraphEntityMapper implements ResponseMapper<GraphModel> {
 
         List<T> objects = new ArrayList<>();
         Set<Long> objectIds = new HashSet<>();
-          /*
+        /*
          * these two lists will contain the node ids and edge ids from the response, in the order
          * they were presented to us.
          */
@@ -193,11 +207,11 @@ public class GraphEntityMapper implements ResponseMapper<GraphModel> {
         if (postLoadMethod != null) {
             final Method method = classInfo.getMethod(postLoadMethod);
             try {
-                if(!method.isAccessible()) {
+                if (!method.isAccessible()) {
                     method.setAccessible(true);
                 }
                 method.invoke(instance);
-            } catch(SecurityException e) {
+            } catch (SecurityException e) {
                 logger.warn("Cannot call PostLoad annotated method {} on class {}, "
                     + "security manager denied access.", method.getName(), classInfo.name(), e);
             } catch (IllegalAccessException | InvocationTargetException e) {
@@ -224,35 +238,118 @@ public class GraphEntityMapper implements ResponseMapper<GraphModel> {
             if (!nodeIds.contains(node.getId())) {
                 Object entity = mappingContext.getNodeEntity(node.getId());
                 if (entity == null) {
-                    ClassInfo clsi = metadata.resolve(node.getLabels());
-                    if (clsi == null) {
-                        logger.debug("Could not find a class to map for labels " + Arrays.toString(node.getLabels()));
+                    ClassInfo classInfo = getClassInfo(node);
+                    if (classInfo == null) {
                         continue;
                     }
                     Map<String, Object> allProps = new HashMap<>(toMap(node.getPropertyList()));
-                    getCompositeProperties(node.getPropertyList(), clsi).forEach( (k, v) -> {
+                    getCompositeProperties(node.getPropertyList(), classInfo).forEach((k, v) -> {
                         allProps.put(k.getName(), v);
                     });
 
-                    entity = entityFactory.newObject(clsi.getUnderlyingClass(), allProps);
+                    entity = entityFactory.newObject(classInfo.getUnderlyingClass(), allProps);
                     EntityUtils.setIdentity(entity, node.getId(), metadata);
                     setProperties(node.getPropertyList(), entity);
                     setLabels(node, entity);
+                    if (lazyLoading && entity instanceof SupportsLazyLoading) {
+                        ((SupportsLazyLoading) entity)
+                            .setLazyInitializer(new LazyInitializer(entity, node.getId(), session, classInfo));
+                    }
                     mappingContext.addNodeEntity(entity, node.getId());
                 }
                 nodeIds.add(node.getId());
+                if (lazyLoading) {
+                    ClassInfo classInfo = getClassInfo(node);
+                    if (classInfo == null) {
+                        continue;
+                    }
+                    resetLazyObjects(classInfo, node, entity);
+                }
             }
         }
+    }
+
+    private ClassInfo getClassInfo(Node node) {
+        ClassInfo classInfo = metadata.resolve(node.getLabels());
+        if (classInfo == null) {
+            logger.debug("Could not find a class to map for labels " + Arrays.toString(node.getLabels()));
+        }
+        return classInfo;
+    }
+
+    private Object initLazyBag(FieldInfo fieldInfo, Long id) {
+        if (SortedSet.class.isAssignableFrom(fieldInfo.type())) {
+            return new LazySortedSet(session, fieldInfo, id);
+        }
+        if (Set.class.isAssignableFrom(fieldInfo.type())) {
+            return new LazySet(session, fieldInfo, id);
+        }
+        return new LazyList(session, fieldInfo, id);
+    }
+
+    private void resetLazyObjects(ClassInfo classInfo, Node node, Object entity) {
+        for (FieldInfo field : classInfo.relationshipFields()) {
+            if (field.isIterable()) {
+                Object iterable = field.read(entity);
+                if (iterable instanceof LazyCollection) {
+                    if (((LazyCollection) iterable).isInitialized()) {
+                        for (Object o : (LazyCollection) iterable) {
+                            resetRelation(node, field, o);
+                        }
+                    }
+                    if (!((LazyCollection) iterable).isModified()) {
+                        ((LazyCollection) iterable).reset();
+                    }
+                } else {
+                    if (iterable != null) {
+                        StreamSupport
+                            .stream(((Iterable<?>) iterable).spliterator(), false)
+                            .forEach(o -> resetRelation(node, field, o));
+                    }
+                    field.write(entity, initLazyBag(field, node.getId()));
+                }
+            } else if (entity instanceof SupportsLazyLoading) {
+                Object currentValue = field.read(entity);
+                resetRelation(node, field, currentValue);
+            }
+        }
+        if (entity instanceof SupportsLazyLoading) {
+            LazyInitializer lazyInitializer = ((SupportsLazyLoading) entity).getLazyInitializer();
+            if (lazyInitializer != null) {
+                lazyInitializer.reset();
+            }
+        }
+    }
+
+    private void resetRelation(Node node, FieldInfo field, Object currentValue) {
+        if (currentValue == null) {
+            return;
+        }
+        Long identity = mappingContext.nativeId(currentValue);
+        if (identity == null) {
+            return;
+        }
+        String direction = field.relationshipDirection(OUTGOING);
+        MappedRelationship rel = null;
+        if (INCOMING.equals(direction)) {
+            rel = new MappedRelationship(identity, field.relationshipType(), node.getId(),
+                currentValue.getClass(), ClassUtils.getType(field.typeParameterDescriptor()));
+        } else if (OUTGOING.equals(direction)) {
+            rel = new MappedRelationship(node.getId(), field.relationshipType(), identity,
+                ClassUtils.getType(field.typeParameterDescriptor()), currentValue.getClass());
+        }
+        mappingContext.removeRelationship(rel);
     }
 
     /**
      * Finds the composite properties of an entity type and build their values using a property list.
      *
      * @param propertyList The properties to convert from.
-     * @param classInfo The class to inspect for composite attributes.
+     * @param classInfo    The class to inspect for composite attributes.
      * @return a map containing the values of the converted attributes, indexed by field object. Never null.
      */
-    private Map<FieldInfo, Object> getCompositeProperties(List<Property<String, Object>> propertyList, ClassInfo classInfo) {
+    private Map<FieldInfo, Object> getCompositeProperties(List<Property<String, Object>> propertyList,
+        ClassInfo classInfo) {
 
         Map<FieldInfo, Object> compositeValues = new HashMap<>();
 
@@ -271,7 +368,7 @@ public class GraphEntityMapper implements ResponseMapper<GraphModel> {
     private void setProperties(List<Property<String, Object>> propertyList, Object instance) {
         ClassInfo classInfo = metadata.classInfo(instance);
 
-        getCompositeProperties(propertyList, classInfo).forEach( (field, v) -> field.write(instance, v));
+        getCompositeProperties(propertyList, classInfo).forEach((field, v) -> field.write(instance, v));
 
         for (Property<?, ?> property : propertyList) {
             writeProperty(classInfo, instance, property);
@@ -402,7 +499,7 @@ public class GraphEntityMapper implements ResponseMapper<GraphModel> {
         }
 
         Map<String, Object> allProps = new HashMap<>(toMap(edge.getPropertyList()));
-        getCompositeProperties(edge.getPropertyList(), relationClassInfo).forEach( (k, v) -> {
+        getCompositeProperties(edge.getPropertyList(), relationClassInfo).forEach((k, v) -> {
             allProps.put(k.getName(), v);
         });
         // also add start and end node as valid constructor values

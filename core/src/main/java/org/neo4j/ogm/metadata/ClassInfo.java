@@ -80,6 +80,7 @@ public class ClassInfo {
     private Map<FieldInfo, Field> fieldInfoFields = new ConcurrentHashMap<>();
     private volatile Set<FieldInfo> fieldInfos;
     private volatile Map<String, FieldInfo> propertyFields;
+    private volatile Map<String, FieldInfo> fieldsByName;
     private volatile Map<String, FieldInfo> indexFields;
     private volatile Collection<FieldInfo> requiredFields;
     private volatile Collection<CompositeIndex> compositeIndexes;
@@ -312,7 +313,8 @@ public class ClassInfo {
      */
     public FieldInfo identityField() {
         initIdentityField();
-        return identityField.orElseThrow(() ->new MetadataException("No internal identity field found for class: " + this.className));
+        return identityField
+            .orElseThrow(() -> new MetadataException("No internal identity field found for class: " + this.className));
     }
 
     private synchronized void initIdentityField() {
@@ -573,12 +575,13 @@ public class ClassInfo {
      * @return A FieldInfo object describing the required relationship field, or null if it doesn't exist.
      */
     public FieldInfo relationshipFieldByName(String fieldName) {
-        for (FieldInfo fieldInfo : relationshipFields()) {
-            if (fieldInfo.getName().equalsIgnoreCase(fieldName)) {
-                return fieldInfo;
+        if (fieldsByName == null) {
+            fieldsByName = new HashMap<>();
+            for (FieldInfo fieldInfo : relationshipFields()) {
+                fieldsByName.put(fieldInfo.getName(), fieldInfo);
             }
         }
-        return null;
+        return fieldsByName.get(fieldName);
     }
 
     public Field getField(FieldInfo fieldInfo) {
@@ -988,13 +991,16 @@ public class ClassInfo {
     }
 
     private synchronized void initPostLoadMethod() {
-        if(isPostLoadMethodMapped) {
+        if (isPostLoadMethodMapped) {
             return;
         }
 
-        Collection<MethodInfo> possiblePostLoadMethods = methodsInfo.findMethodInfoBy(methodInfo -> methodInfo.hasAnnotation(PostLoad.class));
-        if(possiblePostLoadMethods.size() > 1) {
-            throw new MetadataException(String.format("Cannot have more than one post load method annotated with @PostLoad for class '%s'", this.className));
+        Collection<MethodInfo> possiblePostLoadMethods = methodsInfo
+            .findMethodInfoBy(methodInfo -> methodInfo.hasAnnotation(PostLoad.class));
+        if (possiblePostLoadMethods.size() > 1) {
+            throw new MetadataException(String
+                .format("Cannot have more than one post load method annotated with @PostLoad for class '%s'",
+                    this.className));
         }
 
         postLoadMethod = possiblePostLoadMethods.stream().findFirst().orElse(null);

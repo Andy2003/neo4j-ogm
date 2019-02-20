@@ -24,6 +24,7 @@ import java.util.*;
 import org.neo4j.ogm.annotation.Relationship;
 import org.neo4j.ogm.context.DirectedRelationship;
 import org.neo4j.ogm.context.DirectedRelationshipForType;
+import org.neo4j.ogm.lazyloading.LazyCollection;
 import org.neo4j.ogm.metadata.AnnotationInfo;
 import org.neo4j.ogm.metadata.ClassInfo;
 import org.neo4j.ogm.metadata.FieldInfo;
@@ -111,6 +112,10 @@ public class EntityAccessManager {
 
     private static Collection<?> createCollection(Class<?> parameterType, Collection collection, Collection hydrated,
         Class elementType) {
+        if (hydrated instanceof LazyCollection && !((LazyCollection) hydrated).isInitialized()) {
+            ((LazyCollection<?,?>) hydrated).addLoadedData(collection);
+            return hydrated;
+        }
         if (Vector.class.isAssignableFrom(parameterType)) {
             return new Vector<>(union(collection, hydrated, elementType));
         }

@@ -29,22 +29,24 @@ import org.neo4j.ogm.metadata.MetaData;
 import org.neo4j.ogm.model.GraphRowListModel;
 import org.neo4j.ogm.model.GraphRowModel;
 import org.neo4j.ogm.response.Response;
-import org.neo4j.ogm.session.EntityInstantiator;
 
 /**
  * @author vince
+ * @author Andreas Berger
  */
 public class GraphRowListModelMapper implements ResponseMapper<GraphRowListModel> {
 
+    private GraphEntityMapper graphEntityMapper;
     private final MetaData metaData;
     private final MappingContext mappingContext;
-    private EntityInstantiator entityInstantiator;
 
-    public GraphRowListModelMapper(MetaData metaData, MappingContext mappingContext,
-        EntityInstantiator entityInstantiator) {
+    public GraphRowListModelMapper(
+        GraphEntityMapper graphEntityMapper,
+        MetaData metaData,
+        MappingContext mappingContext) {
+        this.graphEntityMapper = graphEntityMapper;
         this.metaData = metaData;
         this.mappingContext = mappingContext;
-        this.entityInstantiator = entityInstantiator;
     }
 
     public <T> Iterable<T> map(Class<T> type, Response<GraphRowListModel> response) {
@@ -55,14 +57,12 @@ public class GraphRowListModelMapper implements ResponseMapper<GraphRowListModel
 
         Set<Long> nodeIds = new LinkedHashSet<>();
         Set<Long> edgeIds = new LinkedHashSet<>();
-        GraphEntityMapper ogm = new GraphEntityMapper(metaData, mappingContext, entityInstantiator);
-
         GraphRowListModel graphRowsModel;
 
         while ((graphRowsModel = response.next()) != null) {
             for (GraphRowModel graphRowModel : graphRowsModel.model()) {
                 //Load the GraphModel into the ogm
-                ogm.map(type, graphRowModel.getGraph(), nodeIds, edgeIds);
+                graphEntityMapper.map(type, graphRowModel.getGraph(), nodeIds, edgeIds);
                 //Extract the id's of filtered nodes from the rowData and return them
                 Object[] rowData = graphRowModel.getRow();
                 for (Object data : rowData) {
@@ -72,7 +72,7 @@ public class GraphRowListModelMapper implements ResponseMapper<GraphRowListModel
                 }
             }
         }
-        ogm.executePostLoad(nodeIds, edgeIds);
+        graphEntityMapper.executePostLoad(nodeIds, edgeIds);
 
         if (classInfo.annotationsInfo().get(RelationshipEntity.class) == null) {
             for (Long resultEntityId : resultEntityIds) {
