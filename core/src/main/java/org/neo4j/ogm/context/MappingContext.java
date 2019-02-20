@@ -555,10 +555,4 @@ public class MappingContext {
             primaryIndexField.writeDirect(entity, id);
         }
     }
-
-    public void removeRelationship(MappedRelationship rel) {
-        if (rel != null) {
-            relationshipRegister.remove(rel);
-        }
-    }
 }
