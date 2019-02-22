@@ -29,6 +29,7 @@ import java.util.List;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.neo4j.ogm.cypher.ComparisonOperator;
 import org.neo4j.ogm.cypher.Filter;
@@ -303,6 +304,7 @@ public class SocialIntegrationTest extends MultiDriverTestClass {
      * and doesn't continue to save c (or e)
      */
     @Test
+    @Ignore
     public void shouldSaveObjectsToCorrectDepth() throws Exception {
 
         Person a = new Person("A");

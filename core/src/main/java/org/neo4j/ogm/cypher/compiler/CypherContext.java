@@ -38,7 +38,7 @@ import org.neo4j.ogm.context.Mappable;
  */
 public class CypherContext implements CompileContext {
 
-    private final Map<Object, NodeBuilderHorizonPair> visitedObjects = new IdentityHashMap<>();
+    private final Map<Object, NodeBuilder> visitedObjects = new IdentityHashMap<>();
     private final Set<Long> visitedRelationshipEntities = new HashSet<>();
 
     private final Map<Long, Object> createdObjectsWithId = new HashMap<>();
@@ -57,13 +57,12 @@ public class CypherContext implements CompileContext {
     }
 
     public boolean visited(Object entity, int horizon) {
-        NodeBuilderHorizonPair pair = visitedObjects.get(entity);
-        return pair != null && pair.getHorizon() > horizon;
+        return this.visitedObjects.containsKey(entity);
     }
 
     @Override
     public void visit(Object entity, NodeBuilder nodeBuilder, int horizon) {
-        this.visitedObjects.put(entity, new NodeBuilderHorizonPair(nodeBuilder, horizon));
+        this.visitedObjects.put(entity, nodeBuilder);
     }
 
     public void registerRelationship(Mappable mappedRelationship) {
@@ -76,8 +75,7 @@ public class CypherContext implements CompileContext {
 
     @Override
     public NodeBuilder visitedNode(Object entity) {
-        NodeBuilderHorizonPair pair = this.visitedObjects.get(entity);
-        return pair != null ? pair.getNodeBuilder() : null;
+        return this.visitedObjects.get(entity);
     }
 
     @Override
