@@ -291,6 +291,11 @@ public class GraphEntityMapper implements ResponseMapper<GraphModel> {
             if (field.isIterable()) {
                 Object iterable = field.read(entity);
                 if (iterable instanceof LazyCollection) {
+                    if (((LazyCollection) iterable).isInitialized()) {
+                        for (Object o : (LazyCollection) iterable) {
+                            resetRelation(node, field, o);
+                        }
+                    }
                     if (!((LazyCollection) iterable).isModified()) {
                         ((LazyCollection) iterable).reset();
                     }
@@ -298,10 +303,15 @@ public class GraphEntityMapper implements ResponseMapper<GraphModel> {
                     LazyCollection<?, ?> lazyCollection = initLazyCollection(field, node.getId());
                     if (iterable instanceof Collection) {
                         Collection<?> existingCollection = (Collection) iterable;
+                        existingCollection.forEach(o -> resetRelation(node, field, o));
                         lazyCollection.addLoadedData((Collection) existingCollection);
+
                     }
                     field.write(entity, lazyCollection);
                 }
+            } else if (entity instanceof SupportsLazyLoading) {
+                Object currentValue = field.read(entity);
+                resetRelation(node, field, currentValue);
             }
         }
         if (entity instanceof SupportsLazyLoading) {
@@ -310,6 +320,26 @@ public class GraphEntityMapper implements ResponseMapper<GraphModel> {
                 lazyInitializer.reset();
             }
         }
+    }
+
+    private void resetRelation(Node node, FieldInfo field, Object currentValue) {
+        if (currentValue == null) {
+            return;
+        }
+        Long identity = mappingContext.nativeId(currentValue);
+        if (identity == null) {
+            return;
+        }
+        String direction = field.relationshipDirection(OUTGOING);
+        MappedRelationship rel = null;
+        if (INCOMING.equals(direction)) {
+            rel = new MappedRelationship(identity, field.relationshipType(), node.getId(),
+                currentValue.getClass(), ClassUtils.getType(field.typeParameterDescriptor()));
+        } else if (OUTGOING.equals(direction)) {
+            rel = new MappedRelationship(node.getId(), field.relationshipType(), identity,
+                ClassUtils.getType(field.typeParameterDescriptor()), currentValue.getClass());
+        }
+        mappingContext.removeRelationship(rel);
     }
 
     /**
