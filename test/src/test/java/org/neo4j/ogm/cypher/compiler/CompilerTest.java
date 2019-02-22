@@ -20,6 +20,7 @@ package org.neo4j.ogm.cypher.compiler;
 
 import static org.assertj.core.api.Assertions.*;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -33,6 +34,8 @@ import org.neo4j.ogm.context.EntityGraphMapper;
 import org.neo4j.ogm.context.EntityMapper;
 import org.neo4j.ogm.context.MappedRelationship;
 import org.neo4j.ogm.context.MappingContext;
+import org.neo4j.ogm.domain.cyclic.CyclicNodeType;
+import org.neo4j.ogm.domain.cyclic.RefField;
 import org.neo4j.ogm.domain.education.Course;
 import org.neo4j.ogm.domain.education.School;
 import org.neo4j.ogm.domain.education.Student;
@@ -59,12 +62,12 @@ import org.neo4j.ogm.session.request.RowStatementFactory;
  * @author Vince Bickers
  * @author Luanne Misquitta
  * @author Michael J. Simons
+ * @author Andreas Berger
  */
 public class CompilerTest {
 
     private static MetaData mappingMetadata;
     private static MappingContext mappingContext;
-    private EntityMapper mapper;
 
     @BeforeClass
     public static void setUpTestDatabase() {
@@ -75,7 +78,8 @@ public class CompilerTest {
             "org.neo4j.domain.policy",
             "org.neo4j.ogm.domain.music",
             "org.neo4j.ogm.domain.restaurant",
-            "org.neo4j.ogm.domain.travel");
+            "org.neo4j.ogm.domain.travel",
+            "org.neo4j.ogm.domain.cyclic");
 
         mappingContext = new MappingContext(mappingMetadata);
     }
@@ -92,7 +96,7 @@ public class CompilerTest {
 
     @Test(expected = NullPointerException.class)
     public void shouldThrowExceptionOnAttemptToMapNullObjectToCypherQuery() {
-        this.mapper.map(null);
+        mapAndCompile(null);
     }
 
     @Test
@@ -898,6 +902,34 @@ public class CompilerTest {
         Map row = (Map) rows.get(0);
         assertThat(row.get("startNodeId")).isEqualTo(mappingContext.nativeId(vince));
         assertThat(row.get("endNodeId")).isEqualTo(mappingContext.nativeId(adam));
+    }
+
+    /**
+     * ISSUE #609
+     * This issue was introduced by #407
+     *
+     * @see org.neo4j.ogm.persistence.examples.social.SocialIntegrationTest#shouldSaveObjectsToCorrectDepth
+     * @see org.neo4j.ogm.persistence.examples.social.SocialIntegrationTest#shouldSaveAllDirectedRelationships
+     */
+    @Test
+    public void testCyclicStructure() {
+        CyclicNodeType nt1 = new CyclicNodeType();
+        CyclicNodeType nt2 = new CyclicNodeType();
+        CyclicNodeType nt3 = new CyclicNodeType();
+
+        List<CyclicNodeType> nodeTypes = Arrays.asList(nt1, nt2, nt3);
+        List<RefField> refFields = new ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            RefField field = new RefField().setNodeTypes(nodeTypes);
+            refFields.add(field);
+
+        }
+        for (CyclicNodeType nodeType : nodeTypes) {
+            nodeType.setSubordinateNodeTypes(nodeTypes);
+            nodeType.setRefFields(refFields);
+        }
+        MultiStatementCypherCompiler compiler = (MultiStatementCypherCompiler) mapAndCompile(nt1);
+        assertThat(compiler.getNewRelationshipBuilders()).size().isLessThan(500);
     }
 
     private Compiler mapAndCompile(Object object) {

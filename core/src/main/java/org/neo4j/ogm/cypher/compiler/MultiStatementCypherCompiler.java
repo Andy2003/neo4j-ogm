@@ -323,4 +323,8 @@ public class MultiStatementCypherCompiler implements Compiler {
         return relsByType;
     }
 
+    // just for testing
+    List<RelationshipBuilder> getNewRelationshipBuilders() {
+        return newRelationshipBuilders;
+    }
 }
