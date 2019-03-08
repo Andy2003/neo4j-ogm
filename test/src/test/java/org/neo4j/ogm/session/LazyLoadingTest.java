@@ -38,6 +38,7 @@ public class LazyLoadingTest extends MultiDriverTestClass {
     @BeforeClass
     public static void createSessionFactory() {
         sessionFactory = new SessionFactory(driver, "org.neo4j.ogm.domain.lazyloading");
+        sessionFactory.setUpdateOtherSideOfRelationships(true);
         sessionFactory.setLoadStrategy(LoadStrategy.LAZY_LOAD_STRATEGY);
     }
 

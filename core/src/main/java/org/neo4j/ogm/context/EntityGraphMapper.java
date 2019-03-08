@@ -423,10 +423,10 @@ public class EntityGraphMapper implements EntityMapper {
                 Boolean mapBothWays = null;
                 if (relatedObject instanceof Iterable) {
                     if (relatedObject instanceof LazyCollection) {
-                        if (((LazyCollection) relatedObject).isInitialized()) {
-                            ((LazyCollection) relatedObject).validateSession(session);
+                        if (((LazyCollection<?, ?>) relatedObject).isInitialized()) {
+                            ((LazyCollection<?, ?>) relatedObject).validateSession(session);
                         }
-                        relatedObject = ((LazyCollection) relatedObject).getLoadedEntities();
+                        relatedObject = ((LazyCollection<?, ?>) relatedObject).getLoadedEntities();
                     }
                     for (Object tgtObject : (Iterable<?>) relatedObject) {
                         if (mapBothWays == null) {
@@ -1043,8 +1043,8 @@ public class EntityGraphMapper implements EntityMapper {
                     if (target != null) {
                         if (target instanceof Iterable) {
                             if (target instanceof LazyCollection) {
-                                if (((LazyCollection) target).isInitialized()) {
-                                    ((LazyCollection) target).validateSession(session);
+                                if (((LazyCollection<?, ?>) target).isInitialized()) {
+                                    ((LazyCollection<?, ?>) target).validateSession(session);
                                 } else {
                                     continue;
                                 }
@@ -1104,26 +1104,33 @@ public class EntityGraphMapper implements EntityMapper {
         if (relatedField == null) {
             return;
         }
-        Object val = relatedField.read(entity);
+        Object currentValue = relatedField.read(entity);
+        if (currentValue instanceof LazyCollection<?, ?> && !((LazyCollection<?, ?>) currentValue).isInitialized()) {
+            return;
+        }
+        Object newValue;
         if (Iterable.class.isAssignableFrom(relatedField.type())) {
-            val = EntityAccessManager.merge(
+            newValue = EntityAccessManager.merge(
                 relatedField.type(),
                 new ArrayList<>(Collections.singleton(otherSideEntity)),
-                (Collection<?>) val,
+                (Collection<?>) currentValue,
                 ClassUtils.getType(relatedField.typeParameterDescriptor()));
         } else if (relatedField.type().isArray()) {
-            val = EntityAccessManager.merge(
+            newValue = EntityAccessManager.merge(
                 relatedField.type(),
                 Collections.singleton(otherSideEntity),
-                (Object[]) val,
+                (Object[]) currentValue,
                 ClassUtils.getType(relatedField.typeParameterDescriptor()));
         } else {
-            if (val == otherSideEntity) {
+            if (currentValue == otherSideEntity) {
                 return;
             }
-            val = otherSideEntity;
+            newValue = otherSideEntity;
         }
-        relatedField.write(entity, val);
+        if (currentValue == newValue) {
+            return;
+        }
+        relatedField.write(entity, currentValue);
     }
 
     private void removeOtherSideOfRelationship(MappedRelationship mappedRelationship) {
@@ -1159,6 +1166,9 @@ public class EntityGraphMapper implements EntityMapper {
         }
         Object currentValue = relatedField.read(entity);
         if (currentValue == null) {
+            return;
+        }
+        if (currentValue instanceof LazyCollection<?, ?> && !((LazyCollection<?, ?>) currentValue).isInitialized()) {
             return;
         }
         if (currentValue instanceof Collection) {

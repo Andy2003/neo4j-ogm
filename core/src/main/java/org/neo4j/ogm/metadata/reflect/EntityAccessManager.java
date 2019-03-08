@@ -96,7 +96,9 @@ public class EntityAccessManager {
             }
             return array;
         }
-        if (currentValues != null && currentValues.containsAll(newValuesCollection)) {
+        if (!(currentValues instanceof LazyCollection)
+            && currentValues != null
+            && currentValues.containsAll(newValuesCollection)) {
             return currentValues;
         }
 
@@ -118,7 +120,7 @@ public class EntityAccessManager {
     private static Collection<?> createCollection(Class<?> parameterType, Collection collection, Collection hydrated,
         Class elementType) {
         if (hydrated instanceof LazyCollection && !((LazyCollection) hydrated).isInitialized()) {
-            ((LazyCollection<?,?>) hydrated).addLoadedData(collection);
+            ((LazyCollection<?, ?>) hydrated).addLoadedData(collection);
             return hydrated;
         }
         if (Vector.class.isAssignableFrom(parameterType)) {
