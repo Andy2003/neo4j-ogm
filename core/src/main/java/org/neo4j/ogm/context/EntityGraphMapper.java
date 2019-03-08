@@ -1105,7 +1105,7 @@ public class EntityGraphMapper implements EntityMapper {
             return;
         }
         Object currentValue = relatedField.read(entity);
-        if (currentValue instanceof LazyCollection<?, ?> && !((LazyCollection<?, ?>) currentValue).isInitialized()) {
+        if (isLazyUninitialized(entity, relatedField, currentValue)) {
             return;
         }
         Object newValue;
@@ -1168,7 +1168,7 @@ public class EntityGraphMapper implements EntityMapper {
         if (currentValue == null) {
             return;
         }
-        if (currentValue instanceof LazyCollection<?, ?> && !((LazyCollection<?, ?>) currentValue).isInitialized()) {
+        if (isLazyUninitialized(entity, relatedField, currentValue)) {
             return;
         }
         if (currentValue instanceof Collection) {
@@ -1191,6 +1191,17 @@ public class EntityGraphMapper implements EntityMapper {
             }
             relatedField.write(entity, null);
         }
+    }
+
+    private boolean isLazyUninitialized(Object entity, FieldInfo relatedField, Object currentValue) {
+        if (currentValue instanceof LazyCollection<?, ?> && !((LazyCollection<?, ?>) currentValue).isInitialized()) {
+            return true;
+        }
+        if (!(entity instanceof SupportsLazyLoading)) {
+            return false;
+        }
+        LazyInitializer lazyInitializer = ((SupportsLazyLoading) entity).getLazyInitializer();
+        return lazyInitializer != null && !lazyInitializer.isInitialized(relatedField.getName());
     }
 
     static class RelationshipNodes {
