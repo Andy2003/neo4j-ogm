@@ -95,7 +95,10 @@ public class EntityAccessManager {
                 // 3. A char[] may come in as a String or an array of String[]
                 newValues = stringToCharacterIterable(newValues, collectionType, elementType);
             }
+        } else {
+            return currentValues;
         }
+        Collection<?> newValuesCollection = (Collection<?>) newValues;
 
         // Array needs a different coercion and special treatment to properly reassign the existing collection
         if (targetIsArray) {
@@ -103,17 +106,20 @@ public class EntityAccessManager {
             Class<?> componentType = collectionType.getComponentType();
 
             // Merge and coerce is done directly on the component type
-            Collection<Object> mergedValues = mergeAndCoerce(componentType, (Iterable) newValues, currentValues);
+            Collection<Object> mergedValues = mergeAndCoerce(componentType, (Iterable) newValuesCollection, currentValues);
 
             Object targetArray = Array.newInstance(componentType, mergedValues.size());
             AtomicInteger cnt = new AtomicInteger(0);
             mergedValues.forEach(object -> Array.set(targetArray, cnt.getAndIncrement(), object));
             return targetArray;
         }
+        if (currentValues != null && currentValues.containsAll(newValuesCollection)) {
+            return currentValues;
+        }
 
         // create the desired type of collection and use it for the merge
         Collection newCollection = createTargetCollection(collectionType,
-            mergeAndCoerce(elementType, (Iterable) newValues, currentValues));
+            mergeAndCoerce(elementType, (Iterable) newValuesCollection, currentValues));
         if (newCollection != null) {
             return newCollection;
         }

@@ -20,6 +20,7 @@ package org.neo4j.ogm.context;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -172,9 +173,9 @@ public class SingleUseEntityMapper {
                 }
 
                 if (effectiveFieldType.isArray()) {
-                    value = EntityAccessManager.merge(effectiveFieldType, value, new Object[] {}, elementType);
+                    value = EntityAccessManager.merge(effectiveFieldType, value, (Object[]) null, elementType);
                 } else {
-                    value = EntityAccessManager.merge(effectiveFieldType, value, Collections.emptyList(), elementType);
+                    value = EntityAccessManager.merge(effectiveFieldType, value, (Collection<?>) null, elementType);
                 }
             }
             writer.write(instance, value);
