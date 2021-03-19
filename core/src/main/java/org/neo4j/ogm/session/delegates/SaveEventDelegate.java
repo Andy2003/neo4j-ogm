@@ -33,6 +33,9 @@ import java.util.Set;
 
 import org.neo4j.ogm.annotation.Relationship;
 import org.neo4j.ogm.context.MappedRelationship;
+import org.neo4j.ogm.lazyloading.LazyCollection;
+import org.neo4j.ogm.lazyloading.LazyInitializer;
+import org.neo4j.ogm.lazyloading.SupportsLazyLoading;
 import org.neo4j.ogm.metadata.ClassInfo;
 import org.neo4j.ogm.metadata.DescriptorMappings;
 import org.neo4j.ogm.metadata.FieldInfo;
@@ -289,8 +292,20 @@ final class SaveEventDelegate extends SessionDelegate {
             for (FieldInfo reader : parentClassInfo.relationshipFields()) {
 
                 Object reference = reader.read(parent);
-
+                if (reference instanceof SupportsLazyLoading) {
+                    LazyInitializer lazyInitializer = ((SupportsLazyLoading) reference).getLazyInitializer();
+                    if (lazyInitializer != null) {
+                        if (!lazyInitializer.isInitialized(reader.getField().getName())) {
+                            continue;
+                        }
+                    }
+                }
                 if (reference != null) {
+                    if (reference instanceof LazyCollection) {
+                        if (!((LazyCollection) reference).isInitialized()) {
+                            continue;
+                        }
+                    }
                     CollectionUtils.iterableOf(reference).forEach(children::add);
                 }
             }

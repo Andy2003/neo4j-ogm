@@ -95,6 +95,7 @@ public class ClassInfo {
     private Map<FieldInfo, Field> fieldInfoFields = new ConcurrentHashMap<>();
     private volatile Set<FieldInfo> fieldInfos;
     private volatile Map<String, FieldInfo> propertyFields;
+    private volatile Map<String, FieldInfo> fieldsByName;
     private volatile Map<String, FieldInfo> indexFields;
     private volatile Collection<FieldInfo> requiredFields;
     private volatile Collection<CompositeIndex> compositeIndexes;
@@ -637,12 +638,13 @@ public class ClassInfo {
      * @return A FieldInfo object describing the required relationship field, or null if it doesn't exist.
      */
     public FieldInfo relationshipFieldByName(String fieldName) {
-        for (FieldInfo fieldInfo : relationshipFields()) {
-            if (fieldInfo.getName().equalsIgnoreCase(fieldName)) {
-                return fieldInfo;
+        if (fieldsByName == null) {
+            fieldsByName = new HashMap<>();
+            for (FieldInfo fieldInfo : relationshipFields()) {
+                fieldsByName.put(fieldInfo.getName(), fieldInfo);
             }
         }
-        return null;
+        return fieldsByName.get(fieldName);
     }
 
     public Field getField(FieldInfo fieldInfo) {

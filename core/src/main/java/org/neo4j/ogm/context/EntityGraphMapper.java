@@ -43,12 +43,16 @@ import org.neo4j.ogm.cypher.compiler.PropertyContainerBuilder;
 import org.neo4j.ogm.cypher.compiler.RelationshipBuilder;
 import org.neo4j.ogm.exception.core.InvalidRelationshipTargetException;
 import org.neo4j.ogm.exception.core.MappingException;
+import org.neo4j.ogm.lazyloading.LazyCollection;
+import org.neo4j.ogm.lazyloading.LazyInitializer;
+import org.neo4j.ogm.lazyloading.SupportsLazyLoading;
 import org.neo4j.ogm.metadata.AnnotationInfo;
 import org.neo4j.ogm.metadata.ClassInfo;
 import org.neo4j.ogm.metadata.DescriptorMappings;
 import org.neo4j.ogm.metadata.FieldInfo;
 import org.neo4j.ogm.metadata.MetaData;
 import org.neo4j.ogm.metadata.reflect.EntityAccessManager;
+import org.neo4j.ogm.session.Neo4jSession;
 import org.neo4j.ogm.support.CollectionUtils;
 import org.neo4j.ogm.utils.EntityUtils;
 import org.slf4j.Logger;
@@ -79,6 +83,8 @@ public class EntityGraphMapper implements EntityMapper {
      */
     private final AtomicInteger currentDepth = new AtomicInteger(0);
     private boolean updateOtherSideOfRelationships;
+    private Neo4jSession session;
+
     /**
      * Default supplier for write protection: Always write all the stuff.
      */
@@ -90,12 +96,18 @@ public class EntityGraphMapper implements EntityMapper {
      *
      * @param metaData       The {@link MetaData} containing the mapping information
      * @param mappingContext The {@link MappingContext} for the current session
+     * @param updateOtherSideOfRelationships if changing one side of the relationship should also update the opposite side
      */
     public EntityGraphMapper(MetaData metaData, MappingContext mappingContext, boolean updateOtherSideOfRelationships) {
         this.metaData = metaData;
         this.mappingContext = mappingContext;
         this.compiler = new MultiStatementCypherCompiler(mappingContext::nativeId);
         this.updateOtherSideOfRelationships = updateOtherSideOfRelationships;
+    }
+
+    public EntityGraphMapper(Neo4jSession session) {
+        this(session.metaData(), session.context(), session.isUpdateOtherSideOfRelationships());
+        this.session = session;
     }
 
     public void addWriteProtection(
@@ -386,7 +398,12 @@ public class EntityGraphMapper implements EntityMapper {
 
         ClassInfo srcInfo = metaData.classInfo(entity);
         Long srcIdentity = mappingContext.nativeId(entity);
-
+        if (entity instanceof SupportsLazyLoading) {
+            LazyInitializer lazyInitializer = ((SupportsLazyLoading) entity).getLazyInitializer();
+            if (lazyInitializer != null) {
+                lazyInitializer.validateSession(session);
+            }
+        }
         for (FieldInfo reader : srcInfo.relationshipFields()) {
 
             String relationshipType = reader.relationshipType();
@@ -447,6 +464,12 @@ public class EntityGraphMapper implements EntityMapper {
                 RelationshipNodes relNodes = new RelationshipNodes(entity, null, startNodeType, endNodeType);
                 relNodes.sourceId = srcIdentity;
                 Boolean mapBothWays = null;
+                if (relatedObject instanceof LazyCollection) {
+                    if (((LazyCollection<?, ?>) relatedObject).isInitialized()) {
+                        ((LazyCollection<?, ?>) relatedObject).validateSession(session);
+                    }
+                    relatedObject = ((LazyCollection<?, ?>) relatedObject).getLoadedEntities();
+                }
                 for (Object tgtObject : CollectionUtils.iterableOf(relatedObject)) {
 
                     if (tgtObject == null) {
@@ -1042,6 +1065,13 @@ public class EntityGraphMapper implements EntityMapper {
                 if (relationshipDirection.equals(tgtRelationshipDirection)) {
 
                     Object target = tgtRelReader.read(tgtObject);
+                    if (target instanceof LazyCollection) {
+                        if (((LazyCollection<?, ?>) target).isInitialized()) {
+                            ((LazyCollection<?, ?>) target).validateSession(session);
+                        } else {
+                            continue;
+                        }
+                    }
                     mapBothWays = targetEqualsSource(target, srcObject);
                 }
             }
@@ -1161,26 +1191,33 @@ public class EntityGraphMapper implements EntityMapper {
         if (relatedField == null) {
             return;
         }
-        Object val = relatedField.read(entity);
+        Object currentValue = relatedField.read(entity);
+        if (isLazyUninitialized(entity, relatedField, currentValue)) {
+            return;
+        }
+        Object newValue;
         if (Iterable.class.isAssignableFrom(relatedField.type())) {
-            val = EntityAccessManager.merge(
+            newValue = EntityAccessManager.merge(
                 relatedField.type(),
                 new ArrayList<>(Collections.singleton(otherSideEntity)),
-                (Collection<?>) val,
+                (Collection<?>) currentValue,
                 DescriptorMappings.getType(relatedField.getTypeDescriptor()));
         } else if (relatedField.type().isArray()) {
-            val = EntityAccessManager.merge(
+            newValue = EntityAccessManager.merge(
                 relatedField.type(),
                 Collections.singleton(otherSideEntity),
-                (Object[]) val,
+                (Object[]) currentValue,
                 DescriptorMappings.getType(relatedField.getTypeDescriptor()));
         } else {
-            if (val == otherSideEntity) {
+            if (currentValue == otherSideEntity) {
                 return;
             }
-            val = otherSideEntity;
+            newValue = otherSideEntity;
         }
-        relatedField.write(entity, val);
+        if (currentValue == newValue) {
+            return;
+        }
+        relatedField.write(entity, newValue);
     }
 
     private void removeOtherSideOfRelationship(MappedRelationship mappedRelationship) {
@@ -1220,12 +1257,16 @@ public class EntityGraphMapper implements EntityMapper {
         if (currentValue == null) {
             return;
         }
+        if (isLazyUninitialized(entity, relatedField, currentValue)) {
+            return;
+        }
         if (currentValue instanceof Collection) {
             ((Collection<?>) currentValue).remove(otherSideEntity);
         } else if (currentValue.getClass().isArray()) {
-            int i = 0;
+            int i;
+            int j;
             Object[] array = (Object[]) currentValue;
-            for (int j = 0; j < array.length; ++j) {
+            for (i = 0, j = 0; j < array.length; ++j) {
                 if (array[j] != otherSideEntity) {
                     array[i++] = array[j];
                 }
@@ -1241,6 +1282,17 @@ public class EntityGraphMapper implements EntityMapper {
             }
             relatedField.write(entity, null);
         }
+    }
+
+    private boolean isLazyUninitialized(Object entity, FieldInfo relatedField, Object currentValue) {
+        if (currentValue instanceof LazyCollection<?, ?> && !((LazyCollection<?, ?>) currentValue).isInitialized()) {
+            return true;
+        }
+        if (!(entity instanceof SupportsLazyLoading)) {
+            return false;
+        }
+        LazyInitializer lazyInitializer = ((SupportsLazyLoading) entity).getLazyInitializer();
+        return lazyInitializer != null && !lazyInitializer.isInitialized(relatedField.getName());
     }
 
     static class RelationshipNodes {

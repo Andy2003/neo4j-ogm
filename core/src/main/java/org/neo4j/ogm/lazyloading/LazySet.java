@@ -16,19 +16,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.neo4j.ogm.model;
+package org.neo4j.ogm.lazyloading;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Set;
 
+import org.neo4j.ogm.metadata.FieldInfo;
+import org.neo4j.ogm.session.Session;
+
 /**
- * @author vince
+ * @author Andreas Berger
  */
-public interface GraphModel {
+public class LazySet<T, DELEGATE extends Set<T>> extends LazyCollection<T, DELEGATE> implements Set<T> {
+    public LazySet(Session session, FieldInfo fieldInfo, long id) {
+        super(session, fieldInfo, id);
+    }
 
-    Collection<Node> getNodes();
+    LazySet(DELEGATE delegate) {
+        super(delegate);
+    }
 
-    Set<Node> getProjectedNodes();
-
-    Collection<Edge> getRelationships();
+    @Override
+    protected DELEGATE createDelegate(Collection<? extends T> result) {
+        //noinspection unchecked
+        return (DELEGATE) new HashSet<T>(result);
+    }
 }

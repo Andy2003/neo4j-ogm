@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.neo4j.ogm.annotation.Relationship;
 import org.neo4j.ogm.context.DirectedRelationship;
 import org.neo4j.ogm.context.DirectedRelationshipForType;
+import org.neo4j.ogm.lazyloading.LazyCollection;
 import org.neo4j.ogm.metadata.AnnotationInfo;
 import org.neo4j.ogm.metadata.ClassInfo;
 import org.neo4j.ogm.metadata.DescriptorMappings;
@@ -113,7 +114,9 @@ public class EntityAccessManager {
             mergedValues.forEach(object -> Array.set(targetArray, cnt.getAndIncrement(), object));
             return targetArray;
         }
-        if (currentValues != null && currentValues.containsAll(newValuesCollection)) {
+        if (!(currentValues instanceof LazyCollection)
+            && currentValues != null
+            && currentValues.containsAll(newValuesCollection)) {
             return currentValues;
         }
 
@@ -146,6 +149,11 @@ public class EntityAccessManager {
 
         // Turn each collection into the correct target type
         Collection<Object> coercedLeft = coerceCollection(targetElementType, left);
+
+        if (right instanceof LazyCollection && !((LazyCollection) right).isInitialized()) {
+            ((LazyCollection) right).addLoadedData(coercedLeft);
+            return (LazyCollection) right;
+        }
         Collection<Object> coercedRight = coerceCollection(targetElementType, right);
 
         // Remove duplicates
@@ -175,6 +183,9 @@ public class EntityAccessManager {
     }
 
     private static Collection<?> createTargetCollection(Class<?> collectionType, Collection collection) {
+        if (collection instanceof LazyCollection && collectionType.isInstance(collection)) {
+            return collection;
+        }
         if (Vector.class.isAssignableFrom(collectionType)) {
             return collection instanceof Vector ? collection : new Vector<>(collection);
         }

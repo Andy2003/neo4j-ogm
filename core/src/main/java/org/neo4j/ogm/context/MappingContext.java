@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.neo4j.ogm.annotation.NodeEntity;
 import org.neo4j.ogm.exception.core.MappingException;
@@ -242,6 +243,15 @@ public class MappingContext {
                 .collect(Collectors.toList());
         }
         return result;
+    }
+
+    Collection<Object> getEntities() {
+        return Stream
+            .concat(
+                relationshipEntityRegister.values().stream(),
+                nodeEntityRegister.values().stream()
+            )
+            .collect(Collectors.toList());
     }
 
     /**
@@ -586,5 +596,9 @@ public class MappingContext {
             }
             primaryIndexField.writeDirect(entity, id);
         }
+    }
+
+    public void removeRelationship(MappedRelationship rel) {
+        relationshipRegister.remove(rel);
     }
 }

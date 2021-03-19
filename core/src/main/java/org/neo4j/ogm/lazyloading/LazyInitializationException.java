@@ -16,19 +16,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.neo4j.ogm.model;
-
-import java.util.Collection;
-import java.util.Set;
+package org.neo4j.ogm.lazyloading;
 
 /**
- * @author vince
+ * @author Andreas Berger
  */
-public interface GraphModel {
-
-    Collection<Node> getNodes();
-
-    Set<Node> getProjectedNodes();
-
-    Collection<Edge> getRelationships();
+public class LazyInitializationException extends RuntimeException {
+    public LazyInitializationException(String msg) {
+        super(msg);
+    }
 }

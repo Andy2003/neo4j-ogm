@@ -19,6 +19,7 @@
 package org.neo4j.ogm.session;
 
 import static java.util.Collections.*;
+import static org.neo4j.ogm.session.LoadStrategy.LAZY_LOAD_STRATEGY;
 
 import java.io.Serializable;
 import java.util.Collection;
@@ -28,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
 
+import org.neo4j.ogm.context.GraphEntityMapper;
 import org.neo4j.ogm.context.MappingContext;
 import org.neo4j.ogm.context.WriteProtectionTarget;
 import org.neo4j.ogm.cypher.Filter;
@@ -55,6 +57,8 @@ import org.neo4j.ogm.session.event.EventListener;
 import org.neo4j.ogm.session.request.OptimisticLockingChecker;
 import org.neo4j.ogm.session.request.strategy.LoadClauseBuilder;
 import org.neo4j.ogm.session.request.strategy.QueryStatements;
+import org.neo4j.ogm.session.request.strategy.impl.LazyLoadNodeClauseBuilder;
+import org.neo4j.ogm.session.request.strategy.impl.LazyLoadRelationshipClauseBuilder;
 import org.neo4j.ogm.session.request.strategy.impl.NodeQueryStatements;
 import org.neo4j.ogm.session.request.strategy.impl.PathNodeLoadClauseBuilder;
 import org.neo4j.ogm.session.request.strategy.impl.PathRelationshipLoadClauseBuilder;
@@ -742,6 +746,11 @@ public class Neo4jSession implements Session {
         this.updateOtherSideOfRelationships = updateOtherSideOfRelationships;
     }
 
+    public GraphEntityMapper getResponseMapper(boolean supportsLazyLoading) {
+        return new GraphEntityMapper(metaData, mappingContext, entityInstantiator, this,
+            supportsLazyLoading && loadStrategy == LAZY_LOAD_STRATEGY);
+    }
+
     private LoadClauseBuilder loadNodeClauseBuilder(int depth) {
         if (depth < 0) {
             return new PathNodeLoadClauseBuilder();
@@ -753,6 +762,9 @@ public class Neo4jSession implements Session {
 
             case SCHEMA_LOAD_STRATEGY:
                 return new SchemaNodeLoadClauseBuilder(metaData.getSchema());
+
+            case LAZY_LOAD_STRATEGY:
+                return new LazyLoadNodeClauseBuilder(metaData);
 
             default:
                 throw new IllegalStateException("Unknown loadStrategy " + loadStrategy);
@@ -770,6 +782,9 @@ public class Neo4jSession implements Session {
 
             case SCHEMA_LOAD_STRATEGY:
                 return new SchemaRelationshipLoadClauseBuilder(metaData.getSchema());
+
+            case LAZY_LOAD_STRATEGY:
+                return new LazyLoadRelationshipClauseBuilder(metaData);
 
             default:
                 throw new IllegalStateException("Unknown loadStrategy " + loadStrategy);

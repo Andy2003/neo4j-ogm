@@ -88,27 +88,28 @@ public class GraphRowModelAdapter implements ResultAdapter<Map<String, Object>, 
             String key = iterator.next();
             variables.add(key);
 
+            boolean projection = graphModelAdapter.isProjection(key);
             Object value = data.get(key);
             boolean generatedNodes = ResultAdapter.describesGeneratedNode(key);
 
             for (Object element : CollectionUtils.iterableOf(value)) {
-                adapt(element, graphModel, values, nodeIdentities, edgeIdentities, generatedNodes);
+                adapt(element, graphModel, values, nodeIdentities, edgeIdentities, generatedNodes, projection);
             }
         }
     }
 
     private void adapt(Object element, DefaultGraphModel graphModel, List<Object> values, Set<Long> nodeIdentities,
-        Set<Long> edgeIdentities, boolean generatedNodes) {
+        Set<Long> edgeIdentities, boolean generatedNodes, boolean projection) {
         if (graphModelAdapter.isPath(element)) {
-            graphModelAdapter.buildPath(element, graphModel, nodeIdentities, edgeIdentities, generatedNodes);
+            graphModelAdapter.buildPath(element, graphModel, nodeIdentities, edgeIdentities, generatedNodes, projection);
         } else if (graphModelAdapter.isNode(element)) {
-            graphModelAdapter.buildNode(element, graphModel, nodeIdentities, generatedNodes);
+            graphModelAdapter.buildNode(element, graphModel, nodeIdentities, generatedNodes, projection);
         } else if (graphModelAdapter.isRelationship(element)) {
             graphModelAdapter.buildRelationship(element, graphModel, edgeIdentities);
         } else if (Collection.class.isAssignableFrom(element.getClass())) {
             Collection collection = (Collection) element;
             for (Object value : collection) {
-                adapt(value, graphModel, values, nodeIdentities, edgeIdentities, generatedNodes);
+                adapt(value, graphModel, values, nodeIdentities, edgeIdentities, generatedNodes, projection);
             }
         } else {
             values.add(element);

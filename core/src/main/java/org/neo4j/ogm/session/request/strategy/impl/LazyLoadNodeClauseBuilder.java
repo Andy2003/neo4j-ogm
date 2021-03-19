@@ -16,19 +16,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.neo4j.ogm.model;
+package org.neo4j.ogm.session.request.strategy.impl;
 
 import java.util.Collection;
-import java.util.Set;
+
+import org.neo4j.ogm.metadata.MetaData;
+import org.neo4j.ogm.metadata.schema.Node;
+import org.neo4j.ogm.metadata.schema.Relationship;
+import org.neo4j.ogm.session.request.strategy.LoadClauseBuilder;
 
 /**
- * @author vince
+ * @author Andreas Berger
  */
-public interface GraphModel {
+public class LazyLoadNodeClauseBuilder extends SchemaNodeLoadClauseBuilder implements LoadClauseBuilder {
 
-    Collection<Node> getNodes();
+    private MetaData metaData;
 
-    Set<Node> getProjectedNodes();
+    public LazyLoadNodeClauseBuilder(MetaData metaData) {
+        super(metaData.getSchema());
+        this.metaData = metaData;
+    }
 
-    Collection<Edge> getRelationships();
+    @Override
+    protected Collection<Relationship> getRelevantRelationships(Node node) {
+        return getNonLazyLoadingRelationships(metaData, node);
+    }
 }

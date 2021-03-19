@@ -18,10 +18,6 @@
  */
 package org.neo4j.ogm.context;
 
-import static java.util.stream.Collectors.*;
-import static org.neo4j.ogm.annotation.Relationship.*;
-import static org.neo4j.ogm.metadata.reflect.EntityAccessManager.*;
-
 import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.function.BiFunction;
@@ -31,11 +27,8 @@ import java.util.function.Predicate;
 import org.neo4j.ogm.annotation.EndNode;
 import org.neo4j.ogm.annotation.StartNode;
 import org.neo4j.ogm.exception.core.MappingException;
-import org.neo4j.ogm.metadata.ClassInfo;
-import org.neo4j.ogm.metadata.DescriptorMappings;
-import org.neo4j.ogm.metadata.FieldInfo;
-import org.neo4j.ogm.metadata.MetaData;
-import org.neo4j.ogm.metadata.MethodInfo;
+import org.neo4j.ogm.lazyloading.*;
+import org.neo4j.ogm.metadata.*;
 import org.neo4j.ogm.metadata.reflect.EntityAccessManager;
 import org.neo4j.ogm.metadata.reflect.EntityFactory;
 import org.neo4j.ogm.model.Edge;
@@ -44,10 +37,16 @@ import org.neo4j.ogm.model.Node;
 import org.neo4j.ogm.model.Property;
 import org.neo4j.ogm.response.model.PropertyModel;
 import org.neo4j.ogm.session.EntityInstantiator;
+import org.neo4j.ogm.session.Neo4jSession;
 import org.neo4j.ogm.typeconversion.CompositeAttributeConverter;
 import org.neo4j.ogm.utils.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static java.util.stream.Collectors.toList;
+import static org.neo4j.ogm.annotation.Relationship.INCOMING;
+import static org.neo4j.ogm.annotation.Relationship.OUTGOING;
+import static org.neo4j.ogm.metadata.reflect.EntityAccessManager.getRelationalWriter;
 
 /**
  * @author Vince Bickers
@@ -70,13 +69,18 @@ public class GraphEntityMapper {
     }
 
     private final MappingContext mappingContext;
+    private final Neo4jSession session;
+    private final boolean lazyLoading;
     private final EntityFactory entityFactory;
     private final MetaData metadata;
 
-    public GraphEntityMapper(MetaData metaData, MappingContext mappingContext, EntityInstantiator entityInstantiator) {
+    public GraphEntityMapper(MetaData metaData, MappingContext mappingContext, EntityInstantiator entityInstantiator,
+        Neo4jSession session, boolean lazyLoading) {
         this.metadata = metaData;
         this.entityFactory = new EntityFactory(metadata, entityInstantiator);
         this.mappingContext = mappingContext;
+        this.session = session;
+        this.lazyLoading = lazyLoading;
     }
 
     <T> List<T> map(Class<T> type, List<GraphModel> listOfGraphModels) {
@@ -117,7 +121,7 @@ public class GraphEntityMapper {
         listOfGraphModels.forEach(mapContentOfIndividualModel);
 
         // Execute postload after all models and only for new ids
-        executePostLoad(mappedNodeIds, mappedRelationshipIds);
+        executePostLoad();
 
         // Collect result
         Predicate<Object> entityPresentAndCompatible = entity -> entity != null && type
@@ -151,7 +155,7 @@ public class GraphEntityMapper {
     ) {
         Predicate<Long> includeInResult = id -> additionalNodeFilter.apply(graphModel, id);
         try {
-            Set<Long> newNodeIds = mapNodes(graphModel);
+            Set<Long> newNodeIds = mapNodes(graphModel, mappedNodeIds);
             returnedNodeIds.addAll(newNodeIds.stream().filter(includeInResult).collect(toList()));
             mappedNodeIds.addAll(newNodeIds);
 
@@ -171,21 +175,11 @@ public class GraphEntityMapper {
      * - post load must be called after the entity is fully hydrated
      * - to avoid executing post load multiple times on same entity
      *
-     * @param nodeIds nodeIds
-     * @param edgeIds edgeIds
      */
-    private void executePostLoad(Set<Long> nodeIds, Set<Long> edgeIds) {
-        for (Long id : nodeIds) {
-            Object o = mappingContext.getNodeEntity(id);
-            executePostLoad(o);
-        }
-
-        for (Long id : edgeIds) {
-            Object o = mappingContext.getRelationshipEntity(id);
-            if (o != null) {
-                executePostLoad(o);
-            }
-        }
+    private void executePostLoad() {
+        mappingContext
+            .getEntities()
+            .forEach(this::executePostLoad);
     }
 
     private void executePostLoad(Object instance) {
@@ -203,36 +197,133 @@ public class GraphEntityMapper {
                 + "security manager denied access.", postLoadMethod.getMethod().getName(), classInfo.name(), e);
         } catch (IllegalAccessException | InvocationTargetException e) {
             logger.warn("Cannot call PostLoad annotated method {} on class {}. "
-                + "Make sure it is public and has no arguments", postLoadMethod.getMethod().getName(), classInfo.name(), e);
+                    + "Make sure it is public and has no arguments", postLoadMethod.getMethod().getName(), classInfo.name(),
+                e);
         }
     }
 
-    private Set<Long> mapNodes(GraphModel graphModel) {
-
+    private Set<Long> mapNodes(GraphModel graphModel, Set<Long> nodeIds) {
         Set<Long> mappedNodeIds = new LinkedHashSet<>();
         for (Node node : graphModel.getNodes()) {
-            Object entity = mappingContext.getNodeEntity(node.getId());
-            if (entity == null) {
-                ClassInfo clsi = metadata.resolve(node.getLabels());
-                if (clsi == null) {
-                    logger.debug("Could not find a class to map for labels " + Arrays.toString(node.getLabels()));
+            if (!nodeIds.contains(node.getId())) {
+                if (mapNode(node)) {
                     continue;
                 }
-                Map<String, Object> allProps = new HashMap<>(toMap(node.getPropertyList()));
-                getCompositeProperties(node.getPropertyList(), clsi).forEach((k, v) -> {
-                    allProps.put(k.getName(), v);
-                });
-
-                entity = entityFactory.newObject(clsi.getUnderlyingClass(), allProps);
-                EntityUtils.setIdentity(entity, node.getId(), metadata);
-                setProperties(node.getPropertyList(), entity);
-                setLabels(node, entity);
-                mappingContext.addNodeEntity(entity, node.getId());
+                nodeIds.add(node.getId());
+                mappedNodeIds.add(node.getId());
             }
-            mappedNodeIds.add(node.getId());
         }
-
+        for (Node node : graphModel.getProjectedNodes()) {
+            mapNode(node);
+        }
         return mappedNodeIds;
+    }
+
+    private boolean mapNode(Node node) {
+        Object entity = mappingContext.getNodeEntity(node.getId());
+        if (entity == null) {
+            ClassInfo clsi = getClassInfo(node);
+            if (clsi == null) {
+                logger.debug("Could not find a class to map for labels " + Arrays.toString(node.getLabels()));
+                return true;
+            }
+            Map<String, Object> allProps = new HashMap<>(toMap(node.getPropertyList()));
+            getCompositeProperties(node.getPropertyList(), clsi).forEach((k, v) -> {
+                allProps.put(k.getName(), v);
+            });
+
+            entity = entityFactory.newObject(clsi.getUnderlyingClass(), allProps);
+            EntityUtils.setIdentity(entity, node.getId(), metadata);
+            setProperties(node.getPropertyList(), entity);
+            setLabels(node, entity);
+            if (lazyLoading && entity instanceof SupportsLazyLoading) {
+                ((SupportsLazyLoading) entity)
+                    .setLazyInitializer(new LazyInitializer(entity, node.getId(), session, clsi));
+            }
+            mappingContext.addNodeEntity(entity, node.getId());
+        }
+        if (lazyLoading) {
+            ClassInfo classInfo = getClassInfo(node);
+            if (classInfo == null) {
+                return true;
+            }
+            resetLazyObjects(classInfo, node, entity);
+        }
+        return false;
+    }
+
+    private ClassInfo getClassInfo(Node node) {
+        ClassInfo classInfo = metadata.resolve(node.getLabels());
+        if (classInfo == null) {
+            logger.debug("Could not find a class to map for labels " + Arrays.toString(node.getLabels()));
+        }
+        return classInfo;
+    }
+
+    private <T> LazyCollection<T, ? extends Collection<T>> initLazyCollection(FieldInfo fieldInfo, Long id) {
+        if (SortedSet.class.isAssignableFrom(fieldInfo.type())) {
+            return new LazySortedSet<>(session, fieldInfo, id);
+        }
+        if (Set.class.isAssignableFrom(fieldInfo.type())) {
+            return new LazySet<>(session, fieldInfo, id);
+        }
+        return new LazyList<>(session, fieldInfo, id);
+    }
+
+    private <T> void resetLazyObjects(ClassInfo classInfo, Node node, Object entity) {
+        for (FieldInfo field : classInfo.relationshipFields()) {
+            if (field.isIterable()) {
+                Object iterable = field.read(entity);
+                if (iterable instanceof LazyCollection) {
+                    if (((LazyCollection) iterable).isInitialized()) {
+                        for (Object o : (LazyCollection) iterable) {
+                            resetRelation(node, field, o);
+                        }
+                    }
+                    if (!((LazyCollection) iterable).isModified()) {
+                        ((LazyCollection) iterable).reset();
+                    }
+                } else {
+                    LazyCollection<?, ?> lazyCollection = initLazyCollection(field, node.getId());
+                    if (iterable instanceof Collection) {
+                        Collection<?> existingCollection = (Collection) iterable;
+                        existingCollection.forEach(o -> resetRelation(node, field, o));
+                        lazyCollection.addLoadedData((Collection) existingCollection);
+
+                    }
+                    field.write(entity, lazyCollection);
+                }
+            } else if (entity instanceof SupportsLazyLoading) {
+                Object currentValue = field.read(entity);
+                resetRelation(node, field, currentValue);
+            }
+        }
+        if (entity instanceof SupportsLazyLoading) {
+            LazyInitializer lazyInitializer = ((SupportsLazyLoading) entity).getLazyInitializer();
+            if (lazyInitializer != null) {
+                lazyInitializer.reset();
+            }
+        }
+    }
+
+    private void resetRelation(Node node, FieldInfo field, Object currentValue) {
+        if (currentValue == null) {
+            return;
+        }
+        Long identity = mappingContext.nativeId(currentValue);
+        if (identity == null) {
+            return;
+        }
+        String direction = field.relationshipDirection(OUTGOING);
+        MappedRelationship rel = null;
+        if (INCOMING.equals(direction)) {
+            rel = new MappedRelationship(identity, field.relationshipType(), node.getId(), null,
+                currentValue.getClass(), DescriptorMappings.getType(field.getTypeDescriptor()));
+        } else if (OUTGOING.equals(direction)) {
+            rel = new MappedRelationship(node.getId(), field.relationshipType(), identity, null,
+                DescriptorMappings.getType(field.getTypeDescriptor()), currentValue.getClass());
+        }
+        mappingContext.removeRelationship(rel);
     }
 
     /**

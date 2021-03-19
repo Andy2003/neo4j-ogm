@@ -33,7 +33,6 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import org.neo4j.ogm.metadata.MetaData;
 import org.neo4j.ogm.model.GraphModel;
 import org.neo4j.ogm.model.PropertyContainer;
 import org.neo4j.ogm.model.RestModel;
@@ -41,7 +40,6 @@ import org.neo4j.ogm.response.Response;
 import org.neo4j.ogm.response.model.DefaultGraphModel;
 import org.neo4j.ogm.response.model.NodeModel;
 import org.neo4j.ogm.response.model.RelationshipModel;
-import org.neo4j.ogm.session.EntityInstantiator;
 import org.neo4j.ogm.session.Utils;
 
 /**
@@ -55,11 +53,9 @@ public class RestModelMapper {
     private final MappingContext mappingContext;
     private final GraphEntityMapper delegate;
 
-    public RestModelMapper(MetaData metaData, MappingContext mappingContext,
-        EntityInstantiator entityInstantiator) {
+    public RestModelMapper(GraphEntityMapper graphEntityMapper, MappingContext mappingContext) {
         this.mappingContext = mappingContext;
-
-        this.delegate = new GraphEntityMapper(metaData, mappingContext, entityInstantiator);
+        this.delegate = graphEntityMapper;
     }
 
     public RestStatisticsModel map(Response<RestModel> response) {

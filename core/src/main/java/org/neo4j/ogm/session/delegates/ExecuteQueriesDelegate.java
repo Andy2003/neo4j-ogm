@@ -128,8 +128,7 @@ public class ExecuteQueriesDelegate extends SessionDelegate {
         }
 
         RestModelRequest request = new DefaultRestModelRequest(cypher, parameters);
-        RestModelMapper mapper = new RestModelMapper(session.metaData(), session.context(),
-            session.getEntityInstantiator());
+        RestModelMapper mapper = new RestModelMapper(session.getResponseMapper(false), session.context());
 
         return session.doInTransaction(() -> {
 
@@ -160,8 +159,7 @@ public class ExecuteQueriesDelegate extends SessionDelegate {
                 // Things that can be mapped to entities
                 GraphModelRequest request = new DefaultGraphModelRequest(cypher, parameters);
                 try (Response<GraphModel> response = session.requestHandler().execute(request)) {
-                    return new GraphRowModelMapper(session.metaData(), session.context(),
-                        session.getEntityInstantiator())
+                    return new GraphRowModelMapper(session.getResponseMapper(true))
                         .map(type, response);
                 }
             } else {

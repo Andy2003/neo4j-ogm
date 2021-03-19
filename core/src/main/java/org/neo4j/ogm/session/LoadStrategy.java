@@ -35,5 +35,10 @@ public enum LoadStrategy {
      * entity classes
      * NOTE: Does not support queries with unlimited depth
      */
-    SCHEMA_LOAD_STRATEGY;
+    SCHEMA_LOAD_STRATEGY,
+
+    /**
+     * Load strategy which loads data as it is accessed in the entity
+     */
+    LAZY_LOAD_STRATEGY
 }

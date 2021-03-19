@@ -44,4 +44,8 @@ public class BaseAdapter {
             return entryValue;
         }
     }
+
+    public boolean isProjection(String returnStatement) {
+        return returnStatement.startsWith("[") && returnStatement.endsWith("]");
+    }
 }
